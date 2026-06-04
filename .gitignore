@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.python-version
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Experiment outputs (we'll have these soon)
+logs/
+results/
+*.jsonl
+*.png
+
+# Environment / secrets
+.env
+*.key
