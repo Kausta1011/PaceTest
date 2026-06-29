@@ -1,1 +1,18 @@
+# Core
 requests>=2.31
+numpy>=1.26
+pyyaml>=6.0
+
+# Embeddings (sentence-transformers pulls torch on first install)
+sentence-transformers>=2.7
+
+# Benchmarks
+datasets>=2.18
+
+# Plots and stats
+matplotlib>=3.8
+scipy>=1.11
+
+# Validation (paid frontier APIs; optional)
+anthropic>=0.34
+openai>=1.40
