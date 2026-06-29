@@ -61,7 +61,7 @@ Tool error: {recent_result.get('tool_error')}
 
 Rewrite the tool documentation to be clearer about what the tool does and how to call it. Return only the new documentation, nothing else. Do not add explanation."""
 
-    new = llm(meta_prompt, max_tokens=400).strip()
+    new = llm(meta_prompt, max_tokens=800).strip()
     # Sanity fallback: too-short rewrites are rejected.
     if len(new) < 30:
         return current_doc
