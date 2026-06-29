@@ -1,9 +1,20 @@
-"""Rewriter functions: ask the LLM to rewrite the agent prompt and tool doc."""
+"""Rewriter functions: ask the LLM to rewrite the agent prompt and tool doc.
+
+Includes a sanity fallback: if the LLM produces an empty or malformed
+rewrite, keep the current prompt or doc. This prevents the empty-cascade
+pathology observed during Week 3 integration (round 0 succeeds, rewriter
+returns empty, subsequent rounds fail to follow the protocol because the
+agent has no instructions).
+"""
 from pacetest.llm import llm
 
 
 def rewrite_agent_prompt(current_prompt: str, recent_result: dict) -> str:
-    """Produce a rewritten agent prompt based on the last round's outcome."""
+    """Produce a rewritten agent prompt based on the last round's outcome.
+
+    Falls back to current_prompt if the LLM produces an empty or malformed
+    rewrite (missing the TOOL_CALL: or ANSWER: format markers).
+    """
     meta_prompt = f"""You are improving an AI agent's instructions.
 
 CURRENT AGENT PROMPT:
@@ -25,11 +36,18 @@ ANSWER: <number>
 
 Return only the new prompt text, nothing else. Do not add explanation."""
 
-    return llm(meta_prompt, max_tokens=600).strip()
+    new = llm(meta_prompt, max_tokens=600).strip()
+    # Sanity fallback: empty / too-short / format-broken rewrites are rejected.
+    if len(new) < 50 or "TOOL_CALL:" not in new or "ANSWER:" not in new:
+        return current_prompt
+    return new
 
 
 def rewrite_tool_doc(current_doc: str, recent_result: dict) -> str:
-    """Produce a rewritten tool documentation based on the last round's outcome."""
+    """Produce a rewritten tool documentation based on the last round's outcome.
+
+    Falls back to current_doc if the LLM produces an empty or too-short rewrite.
+    """
     meta_prompt = f"""You are improving a tool's documentation so an AI agent uses it correctly.
 
 CURRENT TOOL DOCUMENTATION:
@@ -43,4 +61,8 @@ Tool error: {recent_result.get('tool_error')}
 
 Rewrite the tool documentation to be clearer about what the tool does and how to call it. Return only the new documentation, nothing else. Do not add explanation."""
 
-    return llm(meta_prompt, max_tokens=400).strip()
+    new = llm(meta_prompt, max_tokens=400).strip()
+    # Sanity fallback: too-short rewrites are rejected.
+    if len(new) < 30:
+        return current_doc
+    return new
