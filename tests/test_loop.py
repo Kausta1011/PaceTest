@@ -1,10 +1,16 @@
 """Smoke test for the closed rewriting loop."""
 from pacetest.loop import run_loop
+from pacetest.tasks import generate_tasks
 
 
 def test_loop_runs_3_rounds():
-    """End-to-end: 3 rounds, 3 simple tasks. Not strict on agent behavior."""
-    tasks = ["What is 1 + 1?", "What is 2 + 2?", "What is 3 + 3?"]
+    """End-to-end: 3 rounds with seeded Task objects.
+
+    Not strict on agent behavior. The point is: the integrated pipeline
+    (forward pass + oracle + rewriter + logger) does not crash and returns
+    the expected fields.
+    """
+    tasks = generate_tasks(seed=42, n=3)
     out = run_loop(tasks, num_rounds=3, run_name="test_loop_smoke")
     assert "final_agent_prompt" in out
     assert "final_tool_doc" in out
