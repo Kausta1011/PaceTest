@@ -18,12 +18,23 @@ def load_jsonl(path: Path) -> tuple[dict, list[dict]]:
     A PaceTest log always begins with one 'header' line and then one
     'round' line per round. The header carries reproducibility metadata
     (model, seed, git commit, ollama version, python version, platform).
+
+    Malformed lines (e.g., some legacy Week 3 logs that contain raw
+    newlines inside string fields) are skipped rather than crashing;
+    the newer logger writes correctly-escaped JSONL and will never
+    produce them.
     """
     header = None
     rounds = []
     with open(path) as f:
         for line in f:
-            entry = json.loads(line)
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
             if entry.get("type") == "header":
                 header = entry
             elif entry.get("type") == "round":

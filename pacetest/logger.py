@@ -1,4 +1,12 @@
-"""Append-only JSONL logger for experiment runs."""
+"""Append-only JSONL logger for experiment runs.
+
+Invariant: every log line is a complete JSON object. `json.dumps()`
+escapes newlines inside strings (as `\\n`), so multi-line agent
+prompts and rewritten artefacts fit on a single line. Some legacy Week 3
+logs violate this invariant and readers must therefore be tolerant of
+JSON parse errors on individual lines. See `scripts/compute_metrics.py`
+and `scripts/inspect_log.py` for the skip-on-error pattern.
+"""
 import json
 import time
 import platform
