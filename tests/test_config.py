@@ -9,10 +9,15 @@ def test_defaults_match_week4_baseline():
 
     If this test fails, any run that omits a config argument silently
     changes behaviour and breaks comparison with earlier logs.
+
+    self_judgement_weight defaults to 0.5 (balanced), which is the
+    closest continuous value to the Week 4 rewriter's neutral behaviour
+    (its meta-prompt referenced neither the oracle nor the agent's
+    self-critique explicitly).
     """
     c = LoopConfig()
     assert c.feedback_strength == 1.0
-    assert c.self_judgement_weight == 0.0
+    assert c.self_judgement_weight == 0.5
     assert c.update_asymmetry == 0.5
 
 

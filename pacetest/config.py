@@ -27,7 +27,9 @@ class LoopConfig:
             self-critique versus the oracle signal in the rewrite prompt,
             in [0.0, 1.0]. 0.0 means the rewriter uses only oracle
             grounding; 1.0 means the rewriter uses only the agent's
-            self-critique. Default 0.0 (Week 4 baseline: pure oracle).
+            self-critique. Default 0.5 (balanced emphasis), which most
+            closely reproduces the Week 4 rewriter's neutral behaviour
+            (the Week 4 meta-prompt referenced neither signal explicitly).
         update_asymmetry: relative update frequency of the agent's prompt
             versus the tool's documentation per round, in [0.0, 1.0].
             0.0 means only the tool doc is rewritten; 1.0 means only the
@@ -35,7 +37,7 @@ class LoopConfig:
             round. Default 0.5 (Week 4 baseline: symmetric).
     """
     feedback_strength: float = 1.0
-    self_judgement_weight: float = 0.0
+    self_judgement_weight: float = 0.5
     update_asymmetry: float = 0.5
 
     def __post_init__(self):
