@@ -6,15 +6,24 @@ Usage (run from the project root):
 Or, with no arguments, walks all *.jsonl files under logs/:
     python -m scripts.compute_metrics
 
-For each log file, prints a one-line summary of the two Week 6 Day 1
-metrics: sign_flip_rate and sycophancy_decoupling. Also prints the
+For each log file, prints a one-line summary of all four Week 6 metrics:
+sign_flip_rate, sycophancy_decoupling, semantic_distance_agent,
+semantic_distance_tool, and joint_trajectory_variance. Also prints the
 per-log knob values and difficulty for quick cross-run reading.
+
+Embedding metrics load a sentence-transformer model on first invocation
+(one-time ~3-5 second cost, cached thereafter).
 """
 import argparse
 import json
 from pathlib import Path
 
 from pacetest.metrics import sign_flip_rate, sycophancy_decoupling
+from pacetest.embedding_metrics import (
+    semantic_distance_agent,
+    semantic_distance_tool,
+    joint_trajectory_variance,
+)
 
 
 def load_rounds(path: Path) -> tuple[dict, list[dict], int]:
@@ -60,32 +69,39 @@ def main():
         print("No log files found under logs/.")
         return
 
-    print(f"{'run':<45}{'diff':<7}{'fs':<5}{'sjw':<6}{'flip':<7}{'decoup':<8}{'succ':<8}{'corr':<8}")
-    print("-" * 94)
+    print(
+        f"{'run':<40}{'diff':<5}{'fs':<4}{'sjw':<5}"
+        f"{'flip':<6}{'decoup':<8}"
+        f"{'sd_ag':<7}{'sd_td':<7}{'j_var':<8}"
+        f"{'succ':<6}{'corr':<6}"
+    )
+    print("-" * 102)
     for path in args.log_paths:
         header, rounds, skipped = load_rounds(path)
         if header is None:
-            print(f"{path.name:<45}(no header found; {skipped} malformed lines skipped)")
+            print(f"{path.name:<40}(no header found; {skipped} malformed lines skipped)")
             continue
         if skipped:
-            print(f"{'  # ' + path.name + ' had ' + str(skipped) + ' malformed lines (legacy log; skipped safely)':<94}")
+            print(f"  # {path.name} had {skipped} malformed lines (legacy log; skipped safely)")
         diff = header.get("difficulty", "?")
         fs = header.get("feedback_strength", "?")
         sjw = header.get("self_judgement_weight", "?")
         flip = sign_flip_rate(rounds)
         dec = sycophancy_decoupling(rounds)
+        sd_ag = semantic_distance_agent(rounds)
+        sd_td = semantic_distance_tool(rounds)
+        j_var = joint_trajectory_variance(rounds)
         n = len(rounds)
         n_success = sum(1 for r in rounds if r.get("success"))
         n_correct = sum(1 for r in rounds if r.get("correct"))
-        # Pre-oracle logs (Weeks 1-3) have no `correct` field. Mark them
-        # explicitly so their decoupling numbers are not misread as real.
         has_oracle = any("correct" in r for r in rounds)
-        decoup_str = f"{dec['decoupling']:+.2f}" if has_oracle else "  (pre-orc)"
-        corr_str = f"{n_correct}/{n}" if has_oracle else "  (n/a)"
+        decoup_str = f"{dec['decoupling']:+.2f}" if has_oracle else "(pre-orc)"
+        corr_str = f"{n_correct}/{n}" if has_oracle else "(n/a)"
         print(
-            f"{path.stem:<45}{str(diff):<7}{str(fs):<5}{str(sjw):<6}"
-            f"{flip:<7.2f}{decoup_str:<11}"
-            f"{n_success}/{n:<6}{corr_str:<8}"
+            f"{path.stem:<40}{str(diff):<5}{str(fs):<4}{str(sjw):<5}"
+            f"{flip:<6.2f}{decoup_str:<8}"
+            f"{sd_ag:<7.3f}{sd_td:<7.3f}{j_var:<8.4f}"
+            f"{n_success}/{n:<4}{corr_str:<6}"
         )
 
 
