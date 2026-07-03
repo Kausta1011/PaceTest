@@ -57,6 +57,10 @@ def main():
         dest="update_asymmetry",
         help="Update-asymmetry knob in [0.0, 1.0]. Default: 0.5.",
     )
+    parser.add_argument(
+        "--difficulty", choices=["easy", "hard"], default="easy",
+        help="Task difficulty tier. Default: easy.",
+    )
     args = parser.parse_args()
 
     config = LoopConfig(
@@ -65,7 +69,7 @@ def main():
         update_asymmetry=args.update_asymmetry,
     )
     run_name = args.name or f"scored_seed{args.seed}"
-    tasks = generate_tasks(seed=args.seed, n=args.n)
+    tasks = generate_tasks(seed=args.seed, n=args.n, difficulty=args.difficulty)
     print(
         f"Generated {len(tasks)} tasks (seed={args.seed}). "
         f"Config: {config.asdict()}. "

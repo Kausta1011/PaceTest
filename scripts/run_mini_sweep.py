@@ -45,6 +45,10 @@ def main():
         help="Task-pool size per cell. Default: 20.",
     )
     parser.add_argument(
+        "--difficulty", choices=["easy", "hard"], default="easy",
+        help="Task difficulty tier. Default: easy.",
+    )
+    parser.add_argument(
         "--dry-run", action="store_true",
         help="Print the plan and exit without running.",
     )
@@ -52,20 +56,20 @@ def main():
 
     cells = list(product(CANONICAL_VALUES, CANONICAL_VALUES))
     print(f"Mini-sweep plan: {len(cells)} cells, {args.rounds} rounds each.")
-    print(f"  seed={args.seed}, n={args.n}")
+    print(f"  seed={args.seed}, n={args.n}, difficulty={args.difficulty}")
     print(f"  fixed: update_asymmetry=0.5")
     print(f"  varying: feedback_strength x self_judgement_weight")
     print()
 
     if args.dry_run:
         for fs, sjw in cells:
-            run_name = f"mini_sweep_fs{fs}_sjw{sjw}_seed{args.seed}"
+            run_name = f"mini_sweep_{args.difficulty}_fs{fs}_sjw{sjw}_seed{args.seed}"
             print(f"  fs={fs}, sjw={sjw} -> {run_name}")
         print()
         print("Dry run only. No LLM calls made.")
         return
 
-    tasks = generate_tasks(seed=args.seed, n=args.n)
+    tasks = generate_tasks(seed=args.seed, n=args.n, difficulty=args.difficulty)
     total_start = time.time()
 
     for i, (fs, sjw) in enumerate(cells):
@@ -75,7 +79,7 @@ def main():
             self_judgement_weight=sjw,
             update_asymmetry=0.5,
         )
-        run_name = f"mini_sweep_fs{fs}_sjw{sjw}_seed{args.seed}"
+        run_name = f"mini_sweep_{args.difficulty}_fs{fs}_sjw{sjw}_seed{args.seed}"
         print(f"[Cell {i + 1}/{len(cells)}] fs={fs}, sjw={sjw} -> {run_name}")
         out = run_loop(
             tasks,

@@ -63,6 +63,9 @@ def run_loop(tasks: list[Task], num_rounds: int = 20,
         extra_metadata["task_seed"] = task_seed
     extra_metadata["num_tasks"] = len(tasks)
     extra_metadata["num_rounds"] = num_rounds
+    # Difficulty is a property of the tasks; read it off the first one.
+    if tasks:
+        extra_metadata["difficulty"] = tasks[0].difficulty
     # Knob values flow into the header so the run is self-documenting.
     extra_metadata.update(config.asdict())
 

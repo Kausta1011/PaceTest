@@ -41,6 +41,7 @@ def print_header(header: dict) -> None:
     print(f"  task_seed:            {header.get('task_seed', '(not recorded)')}")
     print(f"  num_tasks:            {header.get('num_tasks', '(not recorded)')}")
     print(f"  num_rounds:           {header.get('num_rounds', '(not recorded)')}")
+    print(f"  difficulty:           {header.get('difficulty', '(not recorded)')}")
     print(f"  feedback_strength:    {header.get('feedback_strength', '(not recorded)')}")
     print(f"  self_judgement_wt:    {header.get('self_judgement_weight', '(not recorded)')}")
     print(f"  update_asymmetry:     {header.get('update_asymmetry', '(not recorded)')}")
