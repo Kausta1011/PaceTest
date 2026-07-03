@@ -32,16 +32,27 @@ def _ollama_version() -> str:
         return "unknown"
 
 
-def init_log(run_name: str = None, log_dir: str = "logs") -> Path:
+def init_log(
+    run_name: str = None,
+    log_dir: str = "logs",
+    extra_metadata: dict = None,
+) -> Path:
     """Create a new JSONL log file with a metadata header.
 
     Args:
         run_name: Optional identifier. Defaults to 'run_<unix-timestamp>'.
         log_dir: Folder to write into. Created if it doesn't exist.
+        extra_metadata: Optional dict of extra fields to merge into the
+            header. Use for run-level config that is not otherwise captured
+            (task seed, knob values, pacemaker choice, etc.). Fields in
+            extra_metadata never override the built-in fields.
 
     Returns:
         Path to the new log file.
     """
+    if extra_metadata is None:
+        extra_metadata = {}
+
     log_dir_path = Path(log_dir)
     log_dir_path.mkdir(parents=True, exist_ok=True)
 
@@ -61,6 +72,11 @@ def init_log(run_name: str = None, log_dir: str = "logs") -> Path:
         "python_version": platform.python_version(),
         "platform": platform.platform(),
     }
+    # Merge caller-supplied fields without letting them clobber built-ins.
+    for key, value in extra_metadata.items():
+        if key not in header:
+            header[key] = value
+
     with open(path, "a") as f:
         f.write(json.dumps(header) + "\n")
     return path

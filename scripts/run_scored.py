@@ -46,7 +46,12 @@ def main():
         f"Starting {args.rounds}-round closed loop as '{run_name}'..."
     )
     print()
-    out = run_loop(tasks, num_rounds=args.rounds, run_name=run_name)
+    out = run_loop(
+        tasks,
+        num_rounds=args.rounds,
+        run_name=run_name,
+        task_seed=args.seed,
+    )
     print()
     print(f"Done. Log saved to: {out['log_path']}")
     print(f"Inspect with: python scripts/inspect_log.py {out['log_path']}")

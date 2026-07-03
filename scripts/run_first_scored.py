@@ -20,7 +20,12 @@ def main():
     tasks = generate_tasks(seed=42, n=20)
     print(f"Generated {len(tasks)} seeded tasks. Starting 20-round closed loop...")
     print()
-    out = run_loop(tasks, num_rounds=20, run_name="week4_first_scored")
+    out = run_loop(
+        tasks,
+        num_rounds=20,
+        run_name="week4_first_scored",
+        task_seed=42,
+    )
     print()
     print(f"Done. Log saved to: {out['log_path']}")
     print(f"Inspect with: python scripts/inspect_log.py {out['log_path']}")

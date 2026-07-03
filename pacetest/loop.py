@@ -16,7 +16,7 @@ from pacetest.oracle import score_round
 
 def run_loop(tasks: list[Task], num_rounds: int = 20,
              agent_prompt: str = None, tool_doc: str = None,
-             run_name: str = None) -> dict:
+             run_name: str = None, task_seed: int = None) -> dict:
     """Run K rounds of the closed agent-tool rewriting loop.
 
     Args:
@@ -26,6 +26,9 @@ def run_loop(tasks: list[Task], num_rounds: int = 20,
         agent_prompt: Starting prompt. Defaults to AGENT_PROMPT.
         tool_doc: Starting docstring. Defaults to TOOL_DOC.
         run_name: Optional log file identifier.
+        task_seed: Optional task seed for this run. Recorded in the log
+            header as `task_seed` so the run is fully reproducible from
+            the log file alone.
 
     Returns:
         Dict with final_agent_prompt, final_tool_doc, log_path.
@@ -35,7 +38,13 @@ def run_loop(tasks: list[Task], num_rounds: int = 20,
     if tool_doc is None:
         tool_doc = TOOL_DOC
 
-    log_path = init_log(run_name=run_name)
+    extra_metadata = {}
+    if task_seed is not None:
+        extra_metadata["task_seed"] = task_seed
+    extra_metadata["num_tasks"] = len(tasks)
+    extra_metadata["num_rounds"] = num_rounds
+
+    log_path = init_log(run_name=run_name, extra_metadata=extra_metadata)
     current_prompt = agent_prompt
     current_doc = tool_doc
 
