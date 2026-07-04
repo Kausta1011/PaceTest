@@ -16,13 +16,26 @@ loop's API.
 """
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import NamedTuple, Optional
 
 
 class Decision(Enum):
     """Pacemaker decision for a candidate rewrite."""
     ACCEPT = "accept"
     FREEZE = "freeze"  # reject candidate; keep the current prompt
-    REPLACE = "replace"  # (reserved for diversity injection)
+    REPLACE = "replace"  # use the replacement text provided by the pacemaker
+
+
+class PacemakerVerdict(NamedTuple):
+    """A pacemaker's decision plus (for REPLACE) the replacement text.
+
+    Fields:
+        decision: which action the loop should take.
+        replacement: text to use in place of the candidate rewrite. Set
+            only when decision is REPLACE; None for ACCEPT and FREEZE.
+    """
+    decision: Decision
+    replacement: Optional[str] = None
 
 
 @dataclass
@@ -62,15 +75,16 @@ def variance_triggered_freeze(
     abs_threshold: float = FREEZE_ABS_THRESHOLD,
     rel_factor: float = FREEZE_REL_FACTOR,
     rel_min_history: int = FREEZE_REL_MIN_HISTORY,
-) -> Decision:
+) -> PacemakerVerdict:
     """Decide whether to freeze the artefact based on the candidate's drift.
 
-    Freezes (returns Decision.FREEZE) if either:
-      * candidate_distance >= abs_threshold, OR
-      * len(history) >= rel_min_history AND candidate_distance is more than
-        rel_factor times the mean of the historical distances.
-
-    Otherwise returns Decision.ACCEPT.
+    Returns a PacemakerVerdict with:
+      * decision=Decision.FREEZE if either:
+          candidate_distance >= abs_threshold, OR
+          len(history) >= rel_min_history AND candidate_distance is more
+          than rel_factor times the mean of the historical distances.
+      * decision=Decision.ACCEPT otherwise.
+    In both cases the replacement field is None (freeze never supplies text).
 
     Args:
         candidate_distance: cosine distance between the current prompt and
@@ -80,16 +94,80 @@ def variance_triggered_freeze(
         abs_threshold: absolute distance above which freeze fires.
         rel_factor: relative-spike multiplier.
         rel_min_history: minimum history length for the relative rule.
-
-    Returns:
-        Decision.ACCEPT if the candidate is safe; Decision.FREEZE if the
-        candidate should be rejected and the current prompt preserved.
     """
     if candidate_distance >= abs_threshold:
-        return Decision.FREEZE
+        return PacemakerVerdict(Decision.FREEZE)
     hist = history.semantic_distances
     if len(hist) >= rel_min_history:
         mean_prev = sum(hist) / len(hist)
         if mean_prev > 0.0 and candidate_distance > rel_factor * mean_prev:
-            return Decision.FREEZE
-    return Decision.ACCEPT
+            return PacemakerVerdict(Decision.FREEZE)
+    return PacemakerVerdict(Decision.ACCEPT)
+
+
+# ---- Diversity injection (Week 7 Day 2) ----
+
+# Below this per-round semantic distance a round is treated as "stuck":
+# the rewriter's candidate is essentially the current prompt. If the loop
+# stays stuck for a run of consecutive rounds, the loop is in a narrow
+# attractor and diversity_injection fires to break it out.
+DIVERSITY_STUCK_THRESHOLD = 0.05
+# Number of consecutive stuck rounds required before injection fires.
+# Three in a row is unlikely by accident; the loop is genuinely converged.
+DIVERSITY_STUCK_STREAK = 3
+
+
+def diversity_injection(
+    candidate_distance: float,
+    history: TrajectoryHistory,
+    round_num: int,
+    seeds: list[str],
+    stuck_threshold: float = DIVERSITY_STUCK_THRESHOLD,
+    stuck_streak: int = DIVERSITY_STUCK_STREAK,
+) -> PacemakerVerdict:
+    """Break the loop out of a narrow attractor by rotating to a seed prompt.
+
+    Fires (returns Decision.REPLACE with a seed prompt as replacement)
+    when the last `stuck_streak` recorded semantic distances are all below
+    `stuck_threshold` AND the current candidate distance is also below
+    `stuck_threshold`. In that regime the loop has been effectively
+    stationary; diversity injection replaces the candidate rewrite with
+    the seed prompt at index `round_num % len(seeds)` from the caller's
+    seed list. Otherwise returns Decision.ACCEPT.
+
+    Rotation is deterministic on round_num, so runs with the same seed
+    and same round number always inject the same seed. This preserves
+    reproducibility.
+
+    Args:
+        candidate_distance: cosine distance between the current prompt
+            and the candidate replacement prompt.
+        history: TrajectoryHistory of previous per-round distances.
+        round_num: current round index; used for deterministic rotation.
+        seeds: list of alternative seed prompts to rotate through; must
+            be non-empty when this pacemaker is active.
+        stuck_threshold: per-round distance below which a round counts
+            as stuck.
+        stuck_streak: consecutive stuck rounds required before injection
+            fires.
+
+    Returns:
+        PacemakerVerdict(REPLACE, seeds[round_num % len(seeds)]) when the
+        loop is judged stuck; PacemakerVerdict(ACCEPT) otherwise.
+
+    Raises:
+        ValueError if seeds is empty and injection is triggered.
+    """
+    if candidate_distance >= stuck_threshold:
+        return PacemakerVerdict(Decision.ACCEPT)
+    hist = history.semantic_distances
+    if len(hist) < stuck_streak:
+        return PacemakerVerdict(Decision.ACCEPT)
+    recent = hist[-stuck_streak:]
+    if any(d >= stuck_threshold for d in recent):
+        return PacemakerVerdict(Decision.ACCEPT)
+    # All recent + current are below threshold: inject.
+    if not seeds:
+        raise ValueError("diversity_injection triggered but seeds list is empty")
+    seed_index = round_num % len(seeds)
+    return PacemakerVerdict(Decision.REPLACE, seeds[seed_index])
