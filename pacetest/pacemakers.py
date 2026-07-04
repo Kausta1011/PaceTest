@@ -171,3 +171,60 @@ def diversity_injection(
         raise ValueError("diversity_injection triggered but seeds list is empty")
     seed_index = round_num % len(seeds)
     return PacemakerVerdict(Decision.REPLACE, seeds[seed_index])
+
+
+# ---- Oracle-anchored gating (Week 7 Day 3) ----
+
+# The evaluator callback returns True iff the given agent prompt and tool
+# doc solve the given task correctly. The pacemaker itself contains no LLM
+# call; the caller (the loop) provides the evaluator, which internally runs
+# `run_one_task` and `score_round`. This split keeps the pacemaker unit-
+# testable without an LLM setup and keeps the pacemaker deterministic in
+# a given evaluator's behaviour.
+
+
+def oracle_anchored_gating(
+    candidate_agent_prompt: str,
+    current_agent_prompt: str,
+    tool_doc: str,
+    held_out_tasks: list,
+    evaluator,
+) -> PacemakerVerdict:
+    """Reject the candidate rewrite if it reduces accuracy on a held-out set.
+
+    Evaluates the candidate prompt on each held-out task, then evaluates
+    the current prompt on the same tasks. Compares the two correctness
+    counts. If the candidate is strictly worse, returns FREEZE; otherwise
+    ACCEPT (ties go to the candidate).
+
+    Args:
+        candidate_agent_prompt: the prompt the rewriter has just produced.
+        current_agent_prompt: the prompt in force at the end of the last round.
+        tool_doc: current tool documentation; not itself gated, but passed
+            through to the evaluator so agent-side evaluation has the tool
+            context it needs.
+        held_out_tasks: list of Task instances used only for gating. Must
+            be disjoint from the training pool consumed by the loop.
+        evaluator: callable `(agent_prompt, tool_doc, task) -> bool` that
+            returns True iff the task is solved correctly under the given
+            prompts. Injected so the pacemaker is testable without an LLM.
+
+    Returns:
+        PacemakerVerdict(Decision.FREEZE) if candidate correctness < current
+        correctness on the held-out set; PacemakerVerdict(Decision.ACCEPT)
+        otherwise (including the empty-held-out edge case and ties).
+    """
+    if not held_out_tasks:
+        # Fail safe: with nothing to evaluate on, do not intervene.
+        return PacemakerVerdict(Decision.ACCEPT)
+    candidate_correct = sum(
+        1 for t in held_out_tasks
+        if evaluator(candidate_agent_prompt, tool_doc, t)
+    )
+    current_correct = sum(
+        1 for t in held_out_tasks
+        if evaluator(current_agent_prompt, tool_doc, t)
+    )
+    if candidate_correct < current_correct:
+        return PacemakerVerdict(Decision.FREEZE)
+    return PacemakerVerdict(Decision.ACCEPT)

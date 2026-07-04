@@ -5,6 +5,7 @@ from pacetest.pacemakers import (
     TrajectoryHistory,
     variance_triggered_freeze,
     diversity_injection,
+    oracle_anchored_gating,
     FREEZE_ABS_THRESHOLD,
     DIVERSITY_STUCK_THRESHOLD,
     DIVERSITY_STUCK_STREAK,
@@ -142,6 +143,96 @@ def test_diversity_empty_seeds_raises_when_triggered():
         pass
 
 
+# ---- oracle_anchored_gating ----
+# Mock evaluator: returns True iff the agent prompt contains the token
+# `_ok_` and the task's id contains `pass`. Lets us construct scenarios
+# where candidate and current have different correctness on the same tasks.
+
+class _MockTask:
+    """Minimal task stub for gating tests. Not the real Task dataclass."""
+    def __init__(self, task_id: str):
+        self.task_id = task_id
+
+
+def _mock_eval(agent_prompt: str, tool_doc: str, task) -> bool:
+    """True iff both '_ok_' is in the prompt and 'pass' is in the task_id."""
+    return "_ok_" in agent_prompt and "pass" in task.task_id
+
+
+def test_gating_empty_held_out_accepts():
+    """No held-out tasks -> no evidence -> accept (fail safe)."""
+    v = oracle_anchored_gating(
+        candidate_agent_prompt="bad prompt",
+        current_agent_prompt="_ok_ prompt",
+        tool_doc="doc",
+        held_out_tasks=[],
+        evaluator=_mock_eval,
+    )
+    assert v.decision is Decision.ACCEPT
+
+
+def test_gating_candidate_matches_current_accepts():
+    """Candidate solves the same number of tasks as current -> ACCEPT (ties go to candidate)."""
+    tasks = [_MockTask("t_pass_1"), _MockTask("t_pass_2"), _MockTask("t_fail")]
+    v = oracle_anchored_gating(
+        candidate_agent_prompt="_ok_ candidate",
+        current_agent_prompt="_ok_ current",
+        tool_doc="doc",
+        held_out_tasks=tasks,
+        evaluator=_mock_eval,
+    )
+    # Both prompts solve the two `pass` tasks; both fail on the `fail` task.
+    assert v.decision is Decision.ACCEPT
+
+
+def test_gating_candidate_worse_freezes():
+    """Candidate solves fewer tasks than current -> FREEZE."""
+    tasks = [_MockTask("t_pass_1"), _MockTask("t_pass_2")]
+    v = oracle_anchored_gating(
+        candidate_agent_prompt="bad candidate",       # no _ok_ -> solves 0
+        current_agent_prompt="_ok_ current",           # solves 2
+        tool_doc="doc",
+        held_out_tasks=tasks,
+        evaluator=_mock_eval,
+    )
+    assert v.decision is Decision.FREEZE
+
+
+def test_gating_candidate_better_accepts():
+    """Candidate solves more tasks than current -> ACCEPT."""
+    tasks = [_MockTask("t_pass_1"), _MockTask("t_pass_2")]
+    v = oracle_anchored_gating(
+        candidate_agent_prompt="_ok_ candidate",       # solves 2
+        current_agent_prompt="bad current",            # solves 0
+        tool_doc="doc",
+        held_out_tasks=tasks,
+        evaluator=_mock_eval,
+    )
+    assert v.decision is Decision.ACCEPT
+
+
+def test_gating_evaluator_called_n_times_per_prompt():
+    """The evaluator must be called len(held_out_tasks) times for each prompt.
+
+    Counts total evaluator invocations; with N held-out tasks and 2 prompts
+    to evaluate, expect exactly 2N calls.
+    """
+    tasks = [_MockTask("t_pass_1"), _MockTask("t_pass_2"), _MockTask("t_pass_3")]
+    call_count = 0
+    def counting_eval(ap, td, t):
+        nonlocal call_count
+        call_count += 1
+        return _mock_eval(ap, td, t)
+    oracle_anchored_gating(
+        candidate_agent_prompt="_ok_ candidate",
+        current_agent_prompt="_ok_ current",
+        tool_doc="doc",
+        held_out_tasks=tasks,
+        evaluator=counting_eval,
+    )
+    assert call_count == 6, f"Expected 6 evaluator calls (2 prompts x 3 tasks), got {call_count}"
+
+
 if __name__ == "__main__":
     for name, fn in [
         ("test_freeze_empty_history_accepts_moderate_distance", test_freeze_empty_history_accepts_moderate_distance),
@@ -157,6 +248,11 @@ if __name__ == "__main__":
         ("test_diversity_rotation_is_deterministic_on_round_num", test_diversity_rotation_is_deterministic_on_round_num),
         ("test_diversity_one_recent_nonstuck_prevents_injection", test_diversity_one_recent_nonstuck_prevents_injection),
         ("test_diversity_empty_seeds_raises_when_triggered", test_diversity_empty_seeds_raises_when_triggered),
+        ("test_gating_empty_held_out_accepts", test_gating_empty_held_out_accepts),
+        ("test_gating_candidate_matches_current_accepts", test_gating_candidate_matches_current_accepts),
+        ("test_gating_candidate_worse_freezes", test_gating_candidate_worse_freezes),
+        ("test_gating_candidate_better_accepts", test_gating_candidate_better_accepts),
+        ("test_gating_evaluator_called_n_times_per_prompt", test_gating_evaluator_called_n_times_per_prompt),
     ]:
         fn()
         print(f"{name} passed")
