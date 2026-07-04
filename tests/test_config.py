@@ -82,18 +82,41 @@ def test_config_is_frozen():
 
 
 def test_asdict_returns_all_fields():
-    """asdict() must return a plain dict with the three knob values."""
+    """asdict() must return a plain dict with all fields."""
     c = LoopConfig(
         feedback_strength=0.5,
         self_judgement_weight=0.5,
         update_asymmetry=0.5,
     )
     d = c.asdict()
-    assert d == {
-        "feedback_strength": 0.5,
-        "self_judgement_weight": 0.5,
-        "update_asymmetry": 0.5,
-    }
+    assert d["feedback_strength"] == 0.5
+    assert d["self_judgement_weight"] == 0.5
+    assert d["update_asymmetry"] == 0.5
+    assert d["pacemaker"] is None
+
+
+# ---- Pacemaker field (Week 7) ----
+
+def test_default_pacemaker_is_none():
+    """Default pacemaker is None, matching pre-Week-7 behaviour."""
+    assert LoopConfig().pacemaker is None
+
+
+def test_valid_pacemaker_names_accepted():
+    """The three named pacemakers plus None must be accepted."""
+    for value in [None, "freeze", "diversity", "gating"]:
+        c = LoopConfig(pacemaker=value)
+        assert c.pacemaker == value
+
+
+def test_invalid_pacemaker_rejected():
+    """Any other value must raise ValueError."""
+    for bad in ["FREEZE", "brake", "", 0, [None]]:
+        try:
+            LoopConfig(pacemaker=bad)
+            assert False, f"Should have rejected pacemaker={bad!r}"
+        except ValueError:
+            pass
 
 
 if __name__ == "__main__":
@@ -111,3 +134,9 @@ if __name__ == "__main__":
     print("test_config_is_frozen passed")
     test_asdict_returns_all_fields()
     print("test_asdict_returns_all_fields passed")
+    test_default_pacemaker_is_none()
+    print("test_default_pacemaker_is_none passed")
+    test_valid_pacemaker_names_accepted()
+    print("test_valid_pacemaker_names_accepted passed")
+    test_invalid_pacemaker_rejected()
+    print("test_invalid_pacemaker_rejected passed")

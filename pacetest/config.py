@@ -35,10 +35,18 @@ class LoopConfig:
             0.0 means only the tool doc is rewritten; 1.0 means only the
             agent prompt is rewritten; 0.5 means both are rewritten every
             round. Default 0.5 (Week 4 baseline: symmetric).
+        pacemaker: which pacemaker controller (Section 3.6) is active for
+            this run. None means no pacemaker (Week 4-6 default); the
+            valid non-None values are 'freeze', 'diversity', 'gating'
+            for the three controllers introduced in Week 7. Recorded in
+            the log header alongside the numeric knobs.
     """
     feedback_strength: float = 1.0
     self_judgement_weight: float = 0.5
     update_asymmetry: float = 0.5
+    pacemaker: str = None
+
+    _VALID_PACEMAKERS = (None, "freeze", "diversity", "gating")
 
     def __post_init__(self):
         """Validate ranges at construction time. Raises ValueError."""
@@ -52,6 +60,11 @@ class LoopConfig:
                 raise ValueError(
                     f"{name} must be in [0.0, 1.0], got {value!r}"
                 )
+        if self.pacemaker not in self._VALID_PACEMAKERS:
+            raise ValueError(
+                f"pacemaker must be one of {self._VALID_PACEMAKERS}, "
+                f"got {self.pacemaker!r}"
+            )
 
     def asdict(self) -> dict:
         """Return the config as a plain dict, suitable for log metadata."""
