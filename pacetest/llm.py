@@ -4,7 +4,15 @@ import requests
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL = "qwen3:8b"
 DEFAULT_SEED = 42
-DEFAULT_MAX_TOKENS = 500
+# Bumped from 500 to 1500 on Week 6 Day 5 to accommodate GSM8K responses.
+# qwen3:8b emits a <think>...</think> reasoning block before its visible
+# output, and on word problems that block can be 300 to 800 tokens.
+# The old cap of 500 was appropriate for toy tasks (short TOOL_CALL +
+# ANSWER only) but truncated GSM8K responses to the empty string, which
+# triggered a Week-3-style cascade documented in Section 4.7. The
+# rewriter's per-call max_tokens overrides (600 for agent-prompt rewrites,
+# 800 for tool-doc rewrites) are unchanged.
+DEFAULT_MAX_TOKENS = 1500
 
 def llm(prompt: str, temperature: float = 0.3, seed: int = DEFAULT_SEED, max_tokens: int = DEFAULT_MAX_TOKENS, model: str = MODEL) -> str:
     """Send a prompt to local Ollama, return the generated text.
