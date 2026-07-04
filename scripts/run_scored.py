@@ -62,24 +62,45 @@ def main():
         "--difficulty", choices=["easy", "hard", "gsm8k"], default="easy",
         help="Task difficulty tier. Default: easy.",
     )
+    parser.add_argument(
+        "--pacemaker", choices=["none", "freeze", "diversity", "gating"],
+        default="none",
+        help="Pacemaker controller. Default: none (no pacemaker).",
+    )
+    parser.add_argument(
+        "--held-out-n", type=int, default=3, dest="held_out_n",
+        help="Held-out task-set size for --pacemaker gating. Default: 3.",
+    )
     args = parser.parse_args()
 
+    pacemaker_arg = None if args.pacemaker == "none" else args.pacemaker
     config = LoopConfig(
         feedback_strength=args.feedback_strength,
         self_judgement_weight=args.self_judgement_weight,
         update_asymmetry=args.update_asymmetry,
+        pacemaker=pacemaker_arg,
     )
     run_name = args.name or f"scored_seed{args.seed}"
     tasks = generate_tasks(seed=args.seed, n=args.n, difficulty=args.difficulty)
+    # Held-out set for oracle-anchored gating: same task family, disjoint
+    # seed. Only sampled when gating is the active pacemaker.
+    held_out_tasks = None
+    if pacemaker_arg == "gating":
+        held_out_tasks = generate_tasks(
+            seed=args.seed + 1000, n=args.held_out_n, difficulty=args.difficulty,
+        )
     # Select the starting agent prompt appropriate to the task family.
     # Toy tiers ('easy', 'hard') use the arithmetic transcription prompt;
     # 'gsm8k' uses the chain-of-thought word-problem prompt.
     starting_agent_prompt = (
         GSM8K_AGENT_PROMPT if args.difficulty == "gsm8k" else AGENT_PROMPT
     )
+    ho_msg = ""
+    if held_out_tasks is not None:
+        ho_msg = f", held_out_n={len(held_out_tasks)} (seed={args.seed + 1000})"
     print(
         f"Generated {len(tasks)} tasks (seed={args.seed}, difficulty={args.difficulty}). "
-        f"Config: {config.asdict()}. "
+        f"Config: {config.asdict()}{ho_msg}. "
         f"Starting {args.rounds}-round closed loop as '{run_name}'..."
     )
     print()
@@ -90,6 +111,7 @@ def main():
         run_name=run_name,
         task_seed=args.seed,
         config=config,
+        held_out_tasks=held_out_tasks,
     )
     print()
     print(f"Done. Log saved to: {out['log_path']}")
