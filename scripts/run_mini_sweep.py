@@ -23,6 +23,7 @@ from itertools import product
 
 from pacetest.config import LoopConfig
 from pacetest.loop import run_loop
+from pacetest.prompts import AGENT_PROMPT, GSM8K_AGENT_PROMPT
 from pacetest.tasks import generate_tasks
 
 CANONICAL_VALUES = [0.0, 0.5, 1.0]
@@ -45,7 +46,7 @@ def main():
         help="Task-pool size per cell. Default: 20.",
     )
     parser.add_argument(
-        "--difficulty", choices=["easy", "hard"], default="easy",
+        "--difficulty", choices=["easy", "hard", "gsm8k"], default="easy",
         help="Task difficulty tier. Default: easy.",
     )
     parser.add_argument(
@@ -70,6 +71,11 @@ def main():
         return
 
     tasks = generate_tasks(seed=args.seed, n=args.n, difficulty=args.difficulty)
+    # Toy tiers use the arithmetic transcription prompt; gsm8k uses the
+    # chain-of-thought word-problem prompt.
+    starting_agent_prompt = (
+        GSM8K_AGENT_PROMPT if args.difficulty == "gsm8k" else AGENT_PROMPT
+    )
     total_start = time.time()
 
     for i, (fs, sjw) in enumerate(cells):
@@ -84,6 +90,7 @@ def main():
         out = run_loop(
             tasks,
             num_rounds=args.rounds,
+            agent_prompt=starting_agent_prompt,
             run_name=run_name,
             task_seed=args.seed,
             config=config,

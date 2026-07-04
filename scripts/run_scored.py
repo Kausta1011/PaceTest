@@ -19,6 +19,7 @@ import argparse
 
 from pacetest.config import LoopConfig
 from pacetest.loop import run_loop
+from pacetest.prompts import AGENT_PROMPT, GSM8K_AGENT_PROMPT
 from pacetest.tasks import generate_tasks
 
 
@@ -58,7 +59,7 @@ def main():
         help="Update-asymmetry knob in [0.0, 1.0]. Default: 0.5.",
     )
     parser.add_argument(
-        "--difficulty", choices=["easy", "hard"], default="easy",
+        "--difficulty", choices=["easy", "hard", "gsm8k"], default="easy",
         help="Task difficulty tier. Default: easy.",
     )
     args = parser.parse_args()
@@ -70,8 +71,14 @@ def main():
     )
     run_name = args.name or f"scored_seed{args.seed}"
     tasks = generate_tasks(seed=args.seed, n=args.n, difficulty=args.difficulty)
+    # Select the starting agent prompt appropriate to the task family.
+    # Toy tiers ('easy', 'hard') use the arithmetic transcription prompt;
+    # 'gsm8k' uses the chain-of-thought word-problem prompt.
+    starting_agent_prompt = (
+        GSM8K_AGENT_PROMPT if args.difficulty == "gsm8k" else AGENT_PROMPT
+    )
     print(
-        f"Generated {len(tasks)} tasks (seed={args.seed}). "
+        f"Generated {len(tasks)} tasks (seed={args.seed}, difficulty={args.difficulty}). "
         f"Config: {config.asdict()}. "
         f"Starting {args.rounds}-round closed loop as '{run_name}'..."
     )
@@ -79,6 +86,7 @@ def main():
     out = run_loop(
         tasks,
         num_rounds=args.rounds,
+        agent_prompt=starting_agent_prompt,
         run_name=run_name,
         task_seed=args.seed,
         config=config,

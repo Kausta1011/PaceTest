@@ -1,10 +1,10 @@
-"""Toy task generator for PaceTest.
+"""Task generator for PaceTest.
 
-Produces a reproducible list of arithmetic problems, each carrying its own
+Produces a reproducible list of problems, each carrying its own
 known correct answer ('gold answer'). Same seed always produces the same
 tasks; different seeds produce different problem families.
 
-Two difficulty tiers are supported:
+Three difficulty tiers are supported:
 
 - `difficulty='easy'` (default, Week 4 baseline): two operands drawn from
   [1, 20], one operator drawn from {+, -, *}. Every gold answer is a
@@ -15,6 +15,12 @@ Two difficulty tiers are supported:
   is constrained so the intermediate result is a clean integer, and the
   final answer is also a clean integer; the generator retries a template
   if either produces a non-integer.
+
+- `difficulty='gsm8k'` (Week 6 Day 3 onward): grade-school math word
+  problems from the GSM8K benchmark (openai/gsm8k, test split). Each task's
+  question is a natural-language word problem; the gold_answer is parsed
+  from the `#### <number>` line that terminates the dataset's reference
+  solution. Cached under the user's Hugging Face directory on first use.
 """
 import random
 from dataclasses import dataclass
@@ -108,28 +114,90 @@ def _generate_hard_task(rng: random.Random, task_index: int) -> Task:
     )
 
 
+_GSM8K_CACHE = None
+
+
+def _parse_gsm8k_answer(solution: str) -> float:
+    """Parse the numeric answer from a GSM8K reference solution.
+
+    GSM8K answers end with `#### <number>`. The number may contain commas
+    (e.g. `1,234`). Returns the answer as a float; downstream code checks
+    it is integer-valued.
+    """
+    if "####" not in solution:
+        raise ValueError(f"No `####` line in GSM8K solution: {solution[:80]!r}")
+    tail = solution.split("####")[-1].strip()
+    tail = tail.replace(",", "")
+    return float(tail)
+
+
+def _load_gsm8k_pool() -> list[dict]:
+    """Return the cached list of GSM8K test-set problems.
+
+    Lazy: import `datasets` and hit the cache only when first invoked, so
+    non-GSM8K runs never pay the import cost.
+    """
+    global _GSM8K_CACHE
+    if _GSM8K_CACHE is None:
+        from datasets import load_dataset
+        ds = load_dataset("openai/gsm8k", "main", split="test")
+        _GSM8K_CACHE = [
+            {"question": row["question"], "answer": row["answer"]}
+            for row in ds
+        ]
+    return _GSM8K_CACHE
+
+
+def _generate_gsm8k_tasks(rng: random.Random, n: int) -> list[Task]:
+    """Sample n GSM8K problems reproducibly under the given RNG."""
+    pool = _load_gsm8k_pool()
+    if n > len(pool):
+        raise ValueError(
+            f"Requested {n} GSM8K tasks but only {len(pool)} are available."
+        )
+    sampled = rng.sample(pool, n)
+    tasks = []
+    for i, row in enumerate(sampled):
+        try:
+            gold = _parse_gsm8k_answer(row["answer"])
+        except ValueError:
+            # Skip malformed row and continue; the caller sees fewer than n.
+            continue
+        tasks.append(Task(
+            task_id=f"gsm8k_{i:04d}",
+            question=row["question"],
+            gold_answer=gold,
+            difficulty="gsm8k",
+        ))
+    return tasks
+
+
 def generate_tasks(
     seed: int = 42, n: int = 20, difficulty: str = "easy"
 ) -> list[Task]:
-    """Generate n seeded arithmetic tasks at the requested difficulty.
+    """Generate n seeded tasks at the requested difficulty.
 
     Args:
         seed: random seed. Same seed always gives the same tasks.
         n: how many tasks to produce.
-        difficulty: 'easy' (default, single-op +/-/*) or 'hard'
-            (three-operand parenthesised with +/-/*/, integer answers).
+        difficulty: 'easy' (single-op +/-/*), 'hard' (three-operand
+            parenthesised with +/-/*/, integer answers), or 'gsm8k'
+            (word problems from the GSM8K benchmark).
 
     Returns:
-        A list of n Task objects.
+        A list of Task objects. For 'gsm8k', may return fewer than n if
+        some sampled rows have malformed reference answers.
     """
-    if difficulty not in ("easy", "hard"):
+    if difficulty not in ("easy", "hard", "gsm8k"):
         raise ValueError(
-            f"difficulty must be 'easy' or 'hard', got {difficulty!r}"
+            f"difficulty must be 'easy', 'hard', or 'gsm8k', got {difficulty!r}"
         )
     rng = random.Random(seed)
     if difficulty == "easy":
         return [_generate_easy_task(rng, i) for i in range(n)]
-    return [_generate_hard_task(rng, i) for i in range(n)]
+    if difficulty == "hard":
+        return [_generate_hard_task(rng, i) for i in range(n)]
+    return _generate_gsm8k_tasks(rng, n)
 
 
 if __name__ == "__main__":
@@ -140,3 +208,8 @@ if __name__ == "__main__":
     print("=== hard ===")
     for t in generate_tasks(seed=42, n=5, difficulty="hard"):
         print(f"  {t.task_id}: {t.question}  (gold={t.gold_answer})")
+    print()
+    print("=== gsm8k (first 2, truncated for display) ===")
+    for t in generate_tasks(seed=42, n=2, difficulty="gsm8k"):
+        q_short = t.question.replace("\n", " ")[:120] + "..."
+        print(f"  {t.task_id}: {q_short}  (gold={t.gold_answer})")
