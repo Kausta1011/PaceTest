@@ -50,27 +50,50 @@ def main():
         help="Task difficulty tier. Default: easy.",
     )
     parser.add_argument(
+        "--pacemaker", choices=["none", "freeze", "diversity", "gating"],
+        default="none",
+        help="Pacemaker controller for all cells. Default: none.",
+    )
+    parser.add_argument(
+        "--held-out-n", type=int, default=3, dest="held_out_n",
+        help="Held-out task-set size for --pacemaker gating. Default: 3.",
+    )
+    parser.add_argument(
         "--dry-run", action="store_true",
         help="Print the plan and exit without running.",
     )
     args = parser.parse_args()
 
+    pacemaker_arg = None if args.pacemaker == "none" else args.pacemaker
+    pm_tag = "" if pacemaker_arg is None else f"_{pacemaker_arg}"
+
     cells = list(product(CANONICAL_VALUES, CANONICAL_VALUES))
     print(f"Mini-sweep plan: {len(cells)} cells, {args.rounds} rounds each.")
     print(f"  seed={args.seed}, n={args.n}, difficulty={args.difficulty}")
+    print(f"  pacemaker={pacemaker_arg}")
     print(f"  fixed: update_asymmetry=0.5")
     print(f"  varying: feedback_strength x self_judgement_weight")
     print()
 
     if args.dry_run:
         for fs, sjw in cells:
-            run_name = f"mini_sweep_{args.difficulty}_fs{fs}_sjw{sjw}_seed{args.seed}"
+            run_name = (
+                f"mini_sweep_{args.difficulty}{pm_tag}"
+                f"_fs{fs}_sjw{sjw}_seed{args.seed}"
+            )
             print(f"  fs={fs}, sjw={sjw} -> {run_name}")
         print()
         print("Dry run only. No LLM calls made.")
         return
 
     tasks = generate_tasks(seed=args.seed, n=args.n, difficulty=args.difficulty)
+    # Held-out set for oracle-anchored gating: same task family, disjoint
+    # seed. Sampled once per sweep so all 9 cells share the same held-out.
+    held_out_tasks = None
+    if pacemaker_arg == "gating":
+        held_out_tasks = generate_tasks(
+            seed=args.seed + 1000, n=args.held_out_n, difficulty=args.difficulty,
+        )
     # Toy tiers use the arithmetic transcription prompt; gsm8k uses the
     # chain-of-thought word-problem prompt.
     starting_agent_prompt = (
@@ -84,8 +107,12 @@ def main():
             feedback_strength=fs,
             self_judgement_weight=sjw,
             update_asymmetry=0.5,
+            pacemaker=pacemaker_arg,
         )
-        run_name = f"mini_sweep_{args.difficulty}_fs{fs}_sjw{sjw}_seed{args.seed}"
+        run_name = (
+            f"mini_sweep_{args.difficulty}{pm_tag}"
+            f"_fs{fs}_sjw{sjw}_seed{args.seed}"
+        )
         print(f"[Cell {i + 1}/{len(cells)}] fs={fs}, sjw={sjw} -> {run_name}")
         out = run_loop(
             tasks,
@@ -94,6 +121,7 @@ def main():
             run_name=run_name,
             task_seed=args.seed,
             config=config,
+            held_out_tasks=held_out_tasks,
         )
         elapsed = time.time() - cell_start
         print(f"  cell done in {elapsed:.1f}s. log: {out['log_path']}")
@@ -103,7 +131,7 @@ def main():
     print(f"Mini-sweep complete. Total wall-clock: {total_elapsed / 60:.1f} min.")
     print()
     print("Inspect any cell with:")
-    print("  python scripts/inspect_log.py logs/mini_sweep_fs<X>_sjw<Y>_seed<seed>.jsonl")
+    print("  python scripts/inspect_log.py logs/mini_sweep_...jsonl")
 
 
 if __name__ == "__main__":
