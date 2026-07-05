@@ -233,6 +233,97 @@ def test_gating_evaluator_called_n_times_per_prompt():
     assert call_count == 6, f"Expected 6 evaluator calls (2 prompts x 3 tasks), got {call_count}"
 
 
+# ---- Cache tests (Week 8 Day 2) ----
+
+def test_gating_cache_reuses_score_on_repeated_input():
+    """Same (prompt, tool_doc) across successive calls: evaluator called once."""
+    tasks = [_MockTask("t_pass_1"), _MockTask("t_pass_2"), _MockTask("t_pass_3")]
+    call_count = 0
+    def counting_eval(ap, td, t):
+        nonlocal call_count
+        call_count += 1
+        return _mock_eval(ap, td, t)
+    cache = {}
+    # First call: 2N = 6 evaluator invocations, both prompts get cached.
+    oracle_anchored_gating(
+        candidate_agent_prompt="_ok_ candidate",
+        current_agent_prompt="_ok_ current",
+        tool_doc="doc",
+        held_out_tasks=tasks,
+        evaluator=counting_eval,
+        score_cache=cache,
+    )
+    first_count = call_count
+    # Second call with the same prompts + same tool_doc: 0 additional
+    # invocations (both hits in cache).
+    oracle_anchored_gating(
+        candidate_agent_prompt="_ok_ candidate",
+        current_agent_prompt="_ok_ current",
+        tool_doc="doc",
+        held_out_tasks=tasks,
+        evaluator=counting_eval,
+        score_cache=cache,
+    )
+    assert first_count == 6
+    assert call_count == 6, f"Expected 6 total calls after two identical invocations, got {call_count}"
+
+
+def test_gating_cache_misses_on_different_tool_doc():
+    """Same agent_prompt but different tool_doc: cache miss, re-evaluate."""
+    tasks = [_MockTask("t_pass_1")]
+    call_count = 0
+    def counting_eval(ap, td, t):
+        nonlocal call_count
+        call_count += 1
+        return _mock_eval(ap, td, t)
+    cache = {}
+    oracle_anchored_gating(
+        candidate_agent_prompt="_ok_ cand",
+        current_agent_prompt="_ok_ curr",
+        tool_doc="doc_v1",
+        held_out_tasks=tasks,
+        evaluator=counting_eval,
+        score_cache=cache,
+    )
+    first_count = call_count  # expected 2
+    oracle_anchored_gating(
+        candidate_agent_prompt="_ok_ cand",
+        current_agent_prompt="_ok_ curr",
+        tool_doc="doc_v2",  # different tool doc
+        held_out_tasks=tasks,
+        evaluator=counting_eval,
+        score_cache=cache,
+    )
+    assert first_count == 2
+    # Cache misses because tool_doc changed; expect 2 more calls.
+    assert call_count == 4, f"Expected 4 total calls after tool_doc change, got {call_count}"
+
+
+def test_gating_no_cache_matches_week7_behavior():
+    """score_cache=None (default): exactly 2N evaluator calls per invocation.
+
+    Ensures backward-compat with the Week 7 pacemaker interface. All prior
+    tests using this pacemaker without the cache argument must still pass.
+    """
+    tasks = [_MockTask("t_pass_1"), _MockTask("t_pass_2")]
+    call_count = 0
+    def counting_eval(ap, td, t):
+        nonlocal call_count
+        call_count += 1
+        return _mock_eval(ap, td, t)
+    # Call twice with identical inputs, no cache. Expect 4N = 8 total calls.
+    for _ in range(2):
+        oracle_anchored_gating(
+            candidate_agent_prompt="_ok_ cand",
+            current_agent_prompt="_ok_ curr",
+            tool_doc="doc",
+            held_out_tasks=tasks,
+            evaluator=counting_eval,
+            # score_cache omitted (defaults to None)
+        )
+    assert call_count == 8, f"Expected 8 total calls without cache, got {call_count}"
+
+
 if __name__ == "__main__":
     for name, fn in [
         ("test_freeze_empty_history_accepts_moderate_distance", test_freeze_empty_history_accepts_moderate_distance),
@@ -253,6 +344,9 @@ if __name__ == "__main__":
         ("test_gating_candidate_worse_freezes", test_gating_candidate_worse_freezes),
         ("test_gating_candidate_better_accepts", test_gating_candidate_better_accepts),
         ("test_gating_evaluator_called_n_times_per_prompt", test_gating_evaluator_called_n_times_per_prompt),
+        ("test_gating_cache_reuses_score_on_repeated_input", test_gating_cache_reuses_score_on_repeated_input),
+        ("test_gating_cache_misses_on_different_tool_doc", test_gating_cache_misses_on_different_tool_doc),
+        ("test_gating_no_cache_matches_week7_behavior", test_gating_no_cache_matches_week7_behavior),
     ]:
         fn()
         print(f"{name} passed")

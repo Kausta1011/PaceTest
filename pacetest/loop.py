@@ -73,6 +73,7 @@ def _apply_pacemaker(
     round_num: int,
     history: TrajectoryHistory,
     held_out_tasks: list,
+    gating_score_cache: dict = None,
 ) -> tuple[str, PacemakerVerdict]:
     """Consult the active pacemaker and return the resolved next-round prompt.
 
@@ -113,6 +114,7 @@ def _apply_pacemaker(
             tool_doc=current_doc,
             held_out_tasks=held_out_tasks or [],
             evaluator=evaluator,
+            score_cache=gating_score_cache,
         )
     else:
         # Config validation prevents this; raised as a defensive guard.
@@ -169,6 +171,11 @@ def run_loop(tasks: list[Task], num_rounds: int = 20,
     current_prompt = agent_prompt
     current_doc = tool_doc
     history = TrajectoryHistory()
+    # Cache of held-out correctness counts keyed by (agent_prompt, tool_doc).
+    # Populated only when gating is the active pacemaker; None otherwise.
+    # Halves gating's LLM cost on rounds where the current prompt is
+    # unchanged from the previous rewrite (Section 3.6.3 addendum).
+    gating_score_cache = {} if config.pacemaker == "gating" else None
     # The pacemaker verdict that produced the CURRENT prompt. Attached to
     # the next round's log entry so log readers can see which decision
     # brought each round's prompt into existence.
@@ -210,6 +217,7 @@ def run_loop(tasks: list[Task], num_rounds: int = 20,
                     round_num=round_num,
                     history=history,
                     held_out_tasks=held_out_tasks or [],
+                    gating_score_cache=gating_score_cache,
                 )
                 # Log the verdict only when a pacemaker was actually consulted.
                 # When config.pacemaker is None, distinguish that from an

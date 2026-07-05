@@ -189,6 +189,7 @@ def oracle_anchored_gating(
     tool_doc: str,
     held_out_tasks: list,
     evaluator,
+    score_cache: dict = None,
 ) -> PacemakerVerdict:
     """Reject the candidate rewrite if it reduces accuracy on a held-out set.
 
@@ -208,6 +209,11 @@ def oracle_anchored_gating(
         evaluator: callable `(agent_prompt, tool_doc, task) -> bool` that
             returns True iff the task is solved correctly under the given
             prompts. Injected so the pacemaker is testable without an LLM.
+        score_cache: optional dict used to memoise per-prompt held-out
+            correctness counts across successive invocations. Keyed by
+            (agent_prompt, tool_doc) tuples; values are the observed
+            correct counts. When None, no caching is performed and every
+            call incurs `2 * |held_out_tasks|` evaluator invocations.
 
     Returns:
         PacemakerVerdict(Decision.FREEZE) if candidate correctness < current
@@ -217,14 +223,19 @@ def oracle_anchored_gating(
     if not held_out_tasks:
         # Fail safe: with nothing to evaluate on, do not intervene.
         return PacemakerVerdict(Decision.ACCEPT)
-    candidate_correct = sum(
-        1 for t in held_out_tasks
-        if evaluator(candidate_agent_prompt, tool_doc, t)
-    )
-    current_correct = sum(
-        1 for t in held_out_tasks
-        if evaluator(current_agent_prompt, tool_doc, t)
-    )
+
+    def scored_for(prompt: str) -> int:
+        """Return held-out correctness for prompt, using cache if available."""
+        key = (prompt, tool_doc)
+        if score_cache is not None and key in score_cache:
+            return score_cache[key]
+        n = sum(1 for t in held_out_tasks if evaluator(prompt, tool_doc, t))
+        if score_cache is not None:
+            score_cache[key] = n
+        return n
+
+    candidate_correct = scored_for(candidate_agent_prompt)
+    current_correct = scored_for(current_agent_prompt)
     if candidate_correct < current_correct:
         return PacemakerVerdict(Decision.FREEZE)
     return PacemakerVerdict(Decision.ACCEPT)
