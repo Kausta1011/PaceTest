@@ -23,6 +23,7 @@ Three difficulty tiers are supported:
   solution. Cached under the user's Hugging Face directory on first use.
 """
 import random
+import re
 from dataclasses import dataclass
 
 
@@ -131,6 +132,65 @@ def _parse_gsm8k_answer(solution: str) -> float:
     return float(tail)
 
 
+# GSM8K reference solutions annotate every intermediate calculation as
+# `<<expr=result>>`. The filter below parses these annotations and verifies
+# each one is arithmetically consistent, plus that the terminating
+# `#### <final>` matches the last annotation's result. This catches pure
+# arithmetic errors and #### mismatches; it does NOT catch semantic bugs
+# in which every annotation is internally consistent but uses the wrong
+# operands (the `gsm8k_0000` bug documented in Section 3.4).
+_GSM8K_ANNOTATION_RE = re.compile(r"<<([^>=]+?)=([^>]+?)>>")
+_GSM8K_SAFE_EXPR_RE = re.compile(r"[\d\s\+\-\*\/\.\(\)\,]+")
+
+
+def check_gsm8k_consistency(solution: str, tolerance: float = 1e-6) -> bool:
+    """Return True iff a GSM8K reference solution is arithmetically self-consistent.
+
+    Checks:
+      1. Every `<<expr=result>>` annotation satisfies eval(expr) == result.
+      2. The terminating `#### <final>` matches the last annotation's result.
+
+    Does NOT catch semantic bugs like using the wrong operand in a sum
+    (see gsm8k_0000 at test-split seed 42, which passes this filter but has
+    a mismatched final answer relative to the problem's stated arithmetic).
+    That class of bug requires reading the problem statement, not just the
+    reference solution.
+
+    Args:
+        solution: the raw reference solution text.
+        tolerance: absolute float tolerance for equality checks.
+
+    Returns:
+        True if the solution passes both consistency checks; False otherwise.
+    """
+    if "####" not in solution:
+        return False
+    annotations = _GSM8K_ANNOTATION_RE.findall(solution)
+    if not annotations:
+        return False
+    last_result = None
+    for raw_expr, raw_result in annotations:
+        expr = raw_expr.strip().replace(",", "")
+        result_str = raw_result.strip().replace(",", "")
+        if not _GSM8K_SAFE_EXPR_RE.fullmatch(expr):
+            return False
+        try:
+            computed = float(eval(expr, {"__builtins__": {}}, {}))
+            expected = float(result_str)
+        except (ValueError, ZeroDivisionError, SyntaxError):
+            return False
+        if abs(computed - expected) > tolerance:
+            return False
+        last_result = expected
+    try:
+        final = _parse_gsm8k_answer(solution)
+    except ValueError:
+        return False
+    if last_result is None or abs(last_result - final) > tolerance:
+        return False
+    return True
+
+
 def _load_gsm8k_pool() -> list[dict]:
     """Return the cached list of GSM8K test-set problems.
 
@@ -148,9 +208,21 @@ def _load_gsm8k_pool() -> list[dict]:
     return _GSM8K_CACHE
 
 
-def _generate_gsm8k_tasks(rng: random.Random, n: int) -> list[Task]:
-    """Sample n GSM8K problems reproducibly under the given RNG."""
+def _generate_gsm8k_tasks(
+    rng: random.Random, n: int, filter_bad_rows: bool = True,
+) -> list[Task]:
+    """Sample n GSM8K problems reproducibly under the given RNG.
+
+    If filter_bad_rows is True (default from Week 8 onward), rows whose
+    reference solutions fail `check_gsm8k_consistency` are dropped from
+    the pool BEFORE sampling. This changes which rows the RNG selects
+    versus filter_bad_rows=False, so reproducing pre-Week-8 GSM8K
+    experiments (Sections 4.7, 4.8, 4.9) requires explicit
+    filter_bad_rows=False.
+    """
     pool = _load_gsm8k_pool()
+    if filter_bad_rows:
+        pool = [row for row in pool if check_gsm8k_consistency(row["answer"])]
     if n > len(pool):
         raise ValueError(
             f"Requested {n} GSM8K tasks but only {len(pool)} are available."
@@ -173,7 +245,10 @@ def _generate_gsm8k_tasks(rng: random.Random, n: int) -> list[Task]:
 
 
 def generate_tasks(
-    seed: int = 42, n: int = 20, difficulty: str = "easy"
+    seed: int = 42,
+    n: int = 20,
+    difficulty: str = "easy",
+    filter_bad_rows: bool = True,
 ) -> list[Task]:
     """Generate n seeded tasks at the requested difficulty.
 
@@ -183,10 +258,15 @@ def generate_tasks(
         difficulty: 'easy' (single-op +/-/*), 'hard' (three-operand
             parenthesised with +/-/*/, integer answers), or 'gsm8k'
             (word problems from the GSM8K benchmark).
+        filter_bad_rows: for 'gsm8k' only. If True (default from Week 8
+            onward), drops rows whose reference solutions fail
+            `check_gsm8k_consistency` before sampling. Ignored for the
+            toy tiers. Reproducing Sections 4.7-4.9 requires False.
 
     Returns:
         A list of Task objects. For 'gsm8k', may return fewer than n if
-        some sampled rows have malformed reference answers.
+        some sampled rows have malformed reference answers even after
+        pool-level filtering.
     """
     if difficulty not in ("easy", "hard", "gsm8k"):
         raise ValueError(
@@ -197,7 +277,7 @@ def generate_tasks(
         return [_generate_easy_task(rng, i) for i in range(n)]
     if difficulty == "hard":
         return [_generate_hard_task(rng, i) for i in range(n)]
-    return _generate_gsm8k_tasks(rng, n)
+    return _generate_gsm8k_tasks(rng, n, filter_bad_rows=filter_bad_rows)
 
 
 if __name__ == "__main__":

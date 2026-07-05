@@ -132,6 +132,78 @@ def test_invalid_difficulty_rejected():
             pass
 
 
+# ---- GSM8K arithmetic-consistency filter (Week 8 Day 1) ----
+
+from pacetest.tasks import check_gsm8k_consistency  # noqa: E402
+
+
+def test_gsm8k_filter_accepts_valid_solution():
+    """A solution with correct annotations and matching #### must pass."""
+    solution = (
+        "Kim earns 5+3=<<5+3=8>>8 dollars.\n"
+        "Then he doubles it 8*2=<<8*2=16>>16 dollars.\n"
+        "#### 16"
+    )
+    assert check_gsm8k_consistency(solution) is True
+
+
+def test_gsm8k_filter_rejects_bad_arithmetic():
+    """An annotation whose expr doesn't equal its result must fail."""
+    solution = (
+        "Kim earns 5+3=<<5+3=9>>9 dollars.\n"
+        "#### 9"
+    )
+    assert check_gsm8k_consistency(solution) is False
+
+
+def test_gsm8k_filter_rejects_mismatched_final():
+    """A #### line that doesn't match the last annotation's result must fail."""
+    solution = (
+        "Kim earns 5+3=<<5+3=8>>8 dollars.\n"
+        "Then double: 8*2=<<8*2=16>>16 dollars.\n"
+        "#### 20"
+    )
+    assert check_gsm8k_consistency(solution) is False
+
+
+def test_gsm8k_filter_rejects_no_annotations():
+    """A solution with no `<<>>` annotations cannot be validated -> reject."""
+    solution = "The answer is obvious.\n#### 42"
+    assert check_gsm8k_consistency(solution) is False
+
+
+def test_gsm8k_filter_does_NOT_catch_semantic_bug():
+    """Documents the known limitation: gsm8k_0000-style semantic bugs pass.
+
+    In the actual gsm8k_0000 row (girls raising money), every annotation
+    is arithmetically self-consistent (750+430+400+700 really does equal
+    2280) but the summation uses the wrong operand (400 in place of
+    Sarah's actual 300 contribution). The pure-arithmetic filter cannot
+    detect this class of bug; it would need to read the problem statement.
+    This test documents that limitation so future readers understand what
+    the filter does and does not achieve.
+    """
+    # Exact form of the bad solution as we observed in Section 3.4.
+    bad_gsm8k_0000 = (
+        "Kim raises 320+430=<<320+430=750>>750 dollars.\n"
+        "Maryam raises 400+300=<<400+300=700>>700 dollars.\n"
+        "They raise 750+430+400+700=<<750+430+400+700=2280>>2280 dollars.\n"
+        "#### 2280"
+    )
+    # Every annotation is arithmetically internally consistent.
+    # The filter DOES NOT catch this, and this test asserts that fact.
+    assert check_gsm8k_consistency(bad_gsm8k_0000) is True
+
+
+def test_gsm8k_filter_handles_commas_in_numbers():
+    """Numbers with thousand-separators (e.g. `1,000`) must be handled."""
+    solution = (
+        "The subtotal is 500+500=<<500+500=1000>>1,000 dollars.\n"
+        "#### 1,000"
+    )
+    assert check_gsm8k_consistency(solution) is True
+
+
 if __name__ == "__main__":
     for name, fn in [
         ("test_generator_returns_n_tasks", test_generator_returns_n_tasks),
@@ -146,6 +218,12 @@ if __name__ == "__main__":
         ("test_hard_answers_are_integers", test_hard_answers_are_integers),
         ("test_hard_questions_are_three_operand_parenthesised", test_hard_questions_are_three_operand_parenthesised),
         ("test_invalid_difficulty_rejected", test_invalid_difficulty_rejected),
+        ("test_gsm8k_filter_accepts_valid_solution", test_gsm8k_filter_accepts_valid_solution),
+        ("test_gsm8k_filter_rejects_bad_arithmetic", test_gsm8k_filter_rejects_bad_arithmetic),
+        ("test_gsm8k_filter_rejects_mismatched_final", test_gsm8k_filter_rejects_mismatched_final),
+        ("test_gsm8k_filter_rejects_no_annotations", test_gsm8k_filter_rejects_no_annotations),
+        ("test_gsm8k_filter_does_NOT_catch_semantic_bug", test_gsm8k_filter_does_NOT_catch_semantic_bug),
+        ("test_gsm8k_filter_handles_commas_in_numbers", test_gsm8k_filter_handles_commas_in_numbers),
     ]:
         fn()
         print(f"{name} passed")
