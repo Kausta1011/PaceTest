@@ -10,6 +10,13 @@ from pacetest.pacemakers import (
     DIVERSITY_STUCK_THRESHOLD,
     DIVERSITY_STUCK_STREAK,
 )
+from pacetest.prompts import (
+    AGENT_PROMPT,
+    GSM8K_AGENT_PROMPT,
+    DIVERSITY_SEEDS,
+    GSM8K_DIVERSITY_SEEDS,
+    diversity_seeds_for,
+)
 
 
 # ---- variance_triggered_freeze ----
@@ -324,6 +331,34 @@ def test_gating_no_cache_matches_week7_behavior():
     assert call_count == 8, f"Expected 8 total calls without cache, got {call_count}"
 
 
+# ---- diversity seed pools (Week 8 Day 3 fix) ----
+
+def test_gsm8k_seeds_first_is_initial_prompt():
+    """Section 3.6.2 contract: the rotation contains the run's initial prompt."""
+    assert GSM8K_DIVERSITY_SEEDS[0] == GSM8K_AGENT_PROMPT
+    assert DIVERSITY_SEEDS[0] == AGENT_PROMPT
+
+
+def test_gsm8k_seeds_preserve_format_markers():
+    """All GSM8K seeds keep the three-line response contract verbatim."""
+    for seed in GSM8K_DIVERSITY_SEEDS:
+        assert "REASONING:" in seed
+        assert 'TOOL_CALL: calculator("' in seed
+        assert "ANSWER: <number>" in seed
+
+
+def test_seed_pool_selection_by_initial_prompt():
+    """GSM8K initial prompt gets GSM8K seeds; anything else gets toy seeds."""
+    assert diversity_seeds_for(GSM8K_AGENT_PROMPT) is GSM8K_DIVERSITY_SEEDS
+    assert diversity_seeds_for(AGENT_PROMPT) is DIVERSITY_SEEDS
+    assert diversity_seeds_for("some drifted prompt") is DIVERSITY_SEEDS
+
+
+def test_gsm8k_seed_pool_size_matches_toy_pool():
+    """Both pools have four seeds so rotation arithmetic is identical."""
+    assert len(GSM8K_DIVERSITY_SEEDS) == len(DIVERSITY_SEEDS) == 4
+
+
 if __name__ == "__main__":
     for name, fn in [
         ("test_freeze_empty_history_accepts_moderate_distance", test_freeze_empty_history_accepts_moderate_distance),
@@ -347,6 +382,10 @@ if __name__ == "__main__":
         ("test_gating_cache_reuses_score_on_repeated_input", test_gating_cache_reuses_score_on_repeated_input),
         ("test_gating_cache_misses_on_different_tool_doc", test_gating_cache_misses_on_different_tool_doc),
         ("test_gating_no_cache_matches_week7_behavior", test_gating_no_cache_matches_week7_behavior),
+        ("test_gsm8k_seeds_first_is_initial_prompt", test_gsm8k_seeds_first_is_initial_prompt),
+        ("test_gsm8k_seeds_preserve_format_markers", test_gsm8k_seeds_preserve_format_markers),
+        ("test_seed_pool_selection_by_initial_prompt", test_seed_pool_selection_by_initial_prompt),
+        ("test_gsm8k_seed_pool_size_matches_toy_pool", test_gsm8k_seed_pool_size_matches_toy_pool),
     ]:
         fn()
         print(f"{name} passed")

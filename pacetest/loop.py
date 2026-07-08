@@ -31,7 +31,7 @@ reproducible from its own header.
 """
 from pacetest.forward_pass import run_one_task
 from pacetest.rewriter import rewrite_agent_prompt, rewrite_tool_doc
-from pacetest.prompts import AGENT_PROMPT, TOOL_DOC, DIVERSITY_SEEDS
+from pacetest.prompts import AGENT_PROMPT, TOOL_DOC, DIVERSITY_SEEDS, diversity_seeds_for
 from pacetest.logger import init_log, log_round
 from pacetest.tasks import Task, generate_tasks
 from pacetest.oracle import score_round, is_correct
@@ -74,6 +74,7 @@ def _apply_pacemaker(
     history: TrajectoryHistory,
     held_out_tasks: list,
     gating_score_cache: dict = None,
+    diversity_seeds: list = None,
 ) -> tuple[str, PacemakerVerdict]:
     """Consult the active pacemaker and return the resolved next-round prompt.
 
@@ -87,6 +88,10 @@ def _apply_pacemaker(
         history: TrajectoryHistory of previous per-round agent-prompt
             semantic distances (updated in place by freeze and diversity).
         held_out_tasks: task list used by gating (ignored by the others).
+        diversity_seeds: seed pool for diversity injection. Defaults to the
+            toy DIVERSITY_SEEDS for backward compatibility; run_loop passes
+            the pool matching the run's initial agent prompt (Week 8 Day 3
+            fix, Section 3.6.2 contract).
 
     Returns:
         (next_prompt, verdict). If `config.pacemaker` is None, next_prompt
@@ -100,8 +105,9 @@ def _apply_pacemaker(
         if config.pacemaker == "freeze":
             verdict = variance_triggered_freeze(dist, history)
         else:  # diversity
+            seeds = diversity_seeds if diversity_seeds is not None else DIVERSITY_SEEDS
             verdict = diversity_injection(
-                dist, history, round_num=round_num, seeds=DIVERSITY_SEEDS,
+                dist, history, round_num=round_num, seeds=seeds,
             )
         history.record(dist)
     elif config.pacemaker == "gating":
@@ -171,6 +177,10 @@ def run_loop(tasks: list[Task], num_rounds: int = 20,
     current_prompt = agent_prompt
     current_doc = tool_doc
     history = TrajectoryHistory()
+    # Seed pool for diversity injection, matched to the run's initial agent
+    # prompt per the Section 3.6.2 contract (Week 8 Day 3 fix): GSM8K runs
+    # rotate over GSM8K paraphrases, toy runs over the Week 7 toy seeds.
+    diversity_seeds = diversity_seeds_for(agent_prompt)
     # Cache of held-out correctness counts keyed by (agent_prompt, tool_doc).
     # Populated only when gating is the active pacemaker; None otherwise.
     # Halves gating's LLM cost on rounds where the current prompt is
@@ -218,6 +228,7 @@ def run_loop(tasks: list[Task], num_rounds: int = 20,
                     history=history,
                     held_out_tasks=held_out_tasks or [],
                     gating_score_cache=gating_score_cache,
+                    diversity_seeds=diversity_seeds,
                 )
                 # Log the verdict only when a pacemaker was actually consulted.
                 # When config.pacemaker is None, distinguish that from an

@@ -97,3 +97,69 @@ ANSWER: <number>
 
 Produce exactly one tool call and exactly one answer. Nothing else.""",
 ]
+
+
+# ---- GSM8K diversity injection seeds (Week 8 Day 3 fix) ----
+#
+# Four paraphrases of GSM8K_AGENT_PROMPT, mirroring DIVERSITY_SEEDS. Added
+# after the K=20 diversity sweep revealed that GSM8K runs were injecting the
+# toy-task seeds above, contradicting the Section 3.6.2 design intent that
+# the rotation always contains the run's initial prompt. Seed 0 is
+# GSM8K_AGENT_PROMPT unchanged; seeds 1 to 3 vary tone, framing, and verb
+# choice while preserving the three-line REASONING: / TOOL_CALL: / ANSWER:
+# response contract verbatim so the sanity fallback continues to operate.
+# Ordering is stable so rotation is deterministic on round number.
+
+GSM8K_DIVERSITY_SEEDS = [
+    GSM8K_AGENT_PROMPT,
+
+    """You are a careful math assistant with access to a calculator tool.
+
+Work through the word problem below. First summarise your reasoning in one to three sentences. Then issue ONE calculator call whose expression computes the final answer in full. Then report that answer.
+
+Respond with exactly these three lines, in this order:
+
+REASONING: <one to three sentences summarising the key steps>
+TOOL_CALL: calculator("<single arithmetic expression that computes the final answer>")
+ANSWER: <number>
+
+The calculator understands +, -, *, / and parentheses. The ANSWER line must contain a single number: no units, no words.""",
+
+    """Task: solve the grade-school word problem below, delegating all arithmetic to a calculator tool.
+
+Read the problem, plan the computation in one to three sentences, fold the entire calculation into a single calculator call, then state the result.
+
+Your output must consist of exactly these three lines, in this exact order and format:
+
+REASONING: <one to three sentences summarising the key steps>
+TOOL_CALL: calculator("<single arithmetic expression that computes the final answer>")
+ANSWER: <number>
+
+Supported operators: +, -, *, / and parentheses. Give the ANSWER as one bare number, nothing else.""",
+
+    """You have a calculator function available for numeric work.
+
+For the word problem given, think briefly in one to three sentences, capture the whole computation in one arithmetic expression, evaluate it with a single calculator call, and then give the final number.
+
+Emit exactly three lines, in this order:
+
+REASONING: <one to three sentences summarising the key steps>
+TOOL_CALL: calculator("<single arithmetic expression that computes the final answer>")
+ANSWER: <number>
+
+The calculator accepts +, -, *, / and parentheses. ANSWER must be a single number: no units, no words, no explanation.""",
+]
+
+
+def diversity_seeds_for(initial_agent_prompt: str) -> list:
+    """Return the diversity seed pool matching a run's initial agent prompt.
+
+    Implements the Section 3.6.2 design contract: the injection rotation must
+    always contain the run's initial prompt as one of its options. GSM8K runs
+    (initial prompt GSM8K_AGENT_PROMPT) get the GSM8K paraphrase pool; every
+    other initial prompt gets the toy pool, preserving Week 7 behaviour for
+    toy-task runs.
+    """
+    if initial_agent_prompt == GSM8K_AGENT_PROMPT:
+        return GSM8K_DIVERSITY_SEEDS
+    return DIVERSITY_SEEDS
