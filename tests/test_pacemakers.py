@@ -331,6 +331,66 @@ def test_gating_no_cache_matches_week7_behavior():
     assert call_count == 8, f"Expected 8 total calls without cache, got {call_count}"
 
 
+# ---- cache_stats instrumentation (Week 10 Day 1) ----
+
+def test_gating_cache_stats_counts_hits_and_misses():
+    """cache_stats records one hit or miss per scored_for lookup.
+
+    First invocation with two distinct prompts against an empty cache
+    produces 2 misses (one per prompt) and 0 hits. Second invocation with
+    the same prompts and unchanged tool_doc produces 2 hits and 0 new
+    misses. Confirms the counter path in scored_for is symmetric across
+    hit and miss branches and never double-counts within a single call.
+    """
+    tasks = [_MockTask("t_pass_1"), _MockTask("t_pass_2"), _MockTask("t_pass_3")]
+    cache = {}
+    stats = {"hits": 0, "misses": 0}
+
+    # First call: both prompts fresh -> 2 misses, 0 hits.
+    oracle_anchored_gating(
+        candidate_agent_prompt="_ok_ candidate",
+        current_agent_prompt="_ok_ current",
+        tool_doc="doc",
+        held_out_tasks=tasks,
+        evaluator=_mock_eval,
+        score_cache=cache,
+        cache_stats=stats,
+    )
+    assert stats == {"hits": 0, "misses": 2}, (
+        f"After first call expected 2 misses / 0 hits, got {stats}"
+    )
+
+    # Second call with identical prompts and tool_doc: 2 hits, no new misses.
+    oracle_anchored_gating(
+        candidate_agent_prompt="_ok_ candidate",
+        current_agent_prompt="_ok_ current",
+        tool_doc="doc",
+        held_out_tasks=tasks,
+        evaluator=_mock_eval,
+        score_cache=cache,
+        cache_stats=stats,
+    )
+    assert stats == {"hits": 2, "misses": 2}, (
+        f"After second call expected 2 hits / 2 misses, got {stats}"
+    )
+
+
+def test_gating_cache_stats_none_is_backwards_compatible():
+    """cache_stats=None (default): pacemaker behaves as before, no crash."""
+    tasks = [_MockTask("t_pass_1")]
+    cache = {}
+    v = oracle_anchored_gating(
+        candidate_agent_prompt="_ok_ cand",
+        current_agent_prompt="_ok_ curr",
+        tool_doc="doc",
+        held_out_tasks=tasks,
+        evaluator=_mock_eval,
+        score_cache=cache,
+        # cache_stats omitted
+    )
+    assert v.decision == Decision.ACCEPT
+
+
 # ---- diversity seed pools (Week 8 Day 3 fix) ----
 
 def test_gsm8k_seeds_first_is_initial_prompt():

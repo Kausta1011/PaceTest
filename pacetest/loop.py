@@ -29,10 +29,12 @@ The config values are recorded in the log header alongside the model,
 task seed, and environment metadata, so the log file is fully
 reproducible from its own header.
 """
+import time
+
 from pacetest.forward_pass import run_one_task
 from pacetest.rewriter import rewrite_agent_prompt, rewrite_tool_doc
 from pacetest.prompts import AGENT_PROMPT, TOOL_DOC, DIVERSITY_SEEDS, diversity_seeds_for
-from pacetest.logger import init_log, log_round
+from pacetest.logger import init_log, log_round, log_run_stats
 from pacetest.tasks import Task, generate_tasks
 from pacetest.oracle import score_round, is_correct
 from pacetest.config import LoopConfig
@@ -74,6 +76,7 @@ def _apply_pacemaker(
     history: TrajectoryHistory,
     held_out_tasks: list,
     gating_score_cache: dict = None,
+    gating_cache_stats: dict = None,
     diversity_seeds: list = None,
 ) -> tuple[str, PacemakerVerdict]:
     """Consult the active pacemaker and return the resolved next-round prompt.
@@ -121,6 +124,7 @@ def _apply_pacemaker(
             held_out_tasks=held_out_tasks or [],
             evaluator=evaluator,
             score_cache=gating_score_cache,
+            cache_stats=gating_cache_stats,
         )
     else:
         # Config validation prevents this; raised as a defensive guard.
@@ -174,6 +178,7 @@ def run_loop(tasks: list[Task], num_rounds: int = 20,
     extra_metadata.update(config.asdict())
 
     log_path = init_log(run_name=run_name, extra_metadata=extra_metadata)
+    t_start = time.time()
     current_prompt = agent_prompt
     current_doc = tool_doc
     history = TrajectoryHistory()
@@ -186,10 +191,24 @@ def run_loop(tasks: list[Task], num_rounds: int = 20,
     # Halves gating's LLM cost on rounds where the current prompt is
     # unchanged from the previous rewrite (Section 3.6.3 addendum).
     gating_score_cache = {} if config.pacemaker == "gating" else None
+    # Cache-hit accounting for the Section 3.6.3 empirical validation.
+    # Cumulative across all gating consultations in this run; emitted in
+    # the run_stats tail record. Only populated when pacemaker == "gating".
+    gating_cache_stats = (
+        {"hits": 0, "misses": 0} if config.pacemaker == "gating" else None
+    )
     # The pacemaker verdict that produced the CURRENT prompt. Attached to
     # the next round's log entry so log readers can see which decision
     # brought each round's prompt into existence.
     pending_verdict = None
+    # Cumulative pacemaker-consultation and verdict-decision counts.
+    # A "consultation" is any call to _apply_pacemaker under an active
+    # pacemaker (config.pacemaker is not None). Fires (decisions that
+    # actually changed the prompt) can be derived post hoc from
+    # verdict_counts as freeze + replace; kept out of the log to avoid
+    # baking a specific taxonomy into the tail record.
+    pacemaker_consultations = 0
+    verdict_counts = {}
 
     for round_num in range(num_rounds):
         task = tasks[round_num % len(tasks)]
@@ -228,6 +247,7 @@ def run_loop(tasks: list[Task], num_rounds: int = 20,
                     history=history,
                     held_out_tasks=held_out_tasks or [],
                     gating_score_cache=gating_score_cache,
+                    gating_cache_stats=gating_cache_stats,
                     diversity_seeds=diversity_seeds,
                 )
                 # Log the verdict only when a pacemaker was actually consulted.
@@ -236,6 +256,10 @@ def run_loop(tasks: list[Task], num_rounds: int = 20,
                 pending_verdict = (
                     verdict.decision.value if config.pacemaker is not None else None
                 )
+                if config.pacemaker is not None:
+                    pacemaker_consultations += 1
+                    key = verdict.decision.value
+                    verdict_counts[key] = verdict_counts.get(key, 0) + 1
             else:
                 pending_verdict = "skipped_no_rewrite"
 
@@ -243,6 +267,17 @@ def run_loop(tasks: list[Task], num_rounds: int = 20,
                 current_doc = rewrite_tool_doc(
                     current_doc, rewriter_input, config,
                 )
+
+    wall_clock_s = time.time() - t_start
+    run_stats = {
+        "wall_clock_s": wall_clock_s,
+        "pacemaker_consultations": pacemaker_consultations,
+        "verdict_counts": verdict_counts,
+    }
+    if config.pacemaker == "gating":
+        run_stats["gating_cache_hits"] = gating_cache_stats["hits"]
+        run_stats["gating_cache_misses"] = gating_cache_stats["misses"]
+    log_run_stats(log_path, run_stats)
 
     return {
         "final_agent_prompt": current_prompt,

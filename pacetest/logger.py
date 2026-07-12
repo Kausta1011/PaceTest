@@ -100,3 +100,21 @@ def log_round(log_path: Path, round_num: int, result: dict) -> None:
     }
     with open(log_path, "a") as f:
         f.write(json.dumps(entry) + "\n")
+
+
+def log_run_stats(log_path: Path, stats: dict) -> None:
+    """Append a run-level statistics record to the log tail.
+
+    Emitted once at end of run. Carries wall-clock, pacemaker
+    consultation and verdict counts, and (when the run used gating)
+    cache hit and miss counts for Section 3.6.3 validation.
+
+    Existing log readers (inspect_log.py, compute_metrics.py) filter by
+    exact type ("header" or "round"); unknown types are silently skipped.
+    This tail record is therefore backwards-compatible with pre-Week-10
+    logs and consumers, and is safe to add before all sensitivity-sweep
+    runs land.
+    """
+    entry = {"type": "run_stats", "timestamp": time.time(), **stats}
+    with open(log_path, "a") as f:
+        f.write(json.dumps(entry) + "\n")

@@ -190,6 +190,7 @@ def oracle_anchored_gating(
     held_out_tasks: list,
     evaluator,
     score_cache: dict = None,
+    cache_stats: dict = None,
 ) -> PacemakerVerdict:
     """Reject the candidate rewrite if it reduces accuracy on a held-out set.
 
@@ -214,6 +215,11 @@ def oracle_anchored_gating(
             (agent_prompt, tool_doc) tuples; values are the observed
             correct counts. When None, no caching is performed and every
             call incurs `2 * |held_out_tasks|` evaluator invocations.
+        cache_stats: optional dict that receives cumulative "hits" and
+            "misses" counts, one increment per scored_for lookup. Enables
+            empirical validation of the Section 3.6.3 cache. When
+            score_cache is None every lookup is a miss and increments
+            "misses" only.
 
     Returns:
         PacemakerVerdict(Decision.FREEZE) if candidate correctness < current
@@ -228,7 +234,11 @@ def oracle_anchored_gating(
         """Return held-out correctness for prompt, using cache if available."""
         key = (prompt, tool_doc)
         if score_cache is not None and key in score_cache:
+            if cache_stats is not None:
+                cache_stats["hits"] = cache_stats.get("hits", 0) + 1
             return score_cache[key]
+        if cache_stats is not None:
+            cache_stats["misses"] = cache_stats.get("misses", 0) + 1
         n = sum(1 for t in held_out_tasks if evaluator(prompt, tool_doc, t))
         if score_cache is not None:
             score_cache[key] = n
