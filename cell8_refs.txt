@@ -72,3 +72,17 @@ Camden painted 21 - 13 = <<21-13=8>>8 eggs more than Arnold.
 -- NOTES --
 Original verification: 17 July 2026 (previous chat); receipt was in refs_dump.txt at that time and was overwritten by subsequent seed 77 dumps before the entry was persisted here. Regenerated and re-verified 24 July 2026 (Week 9 Day 5).
 Failure category: cross-task contamination plus defiance-adjacent sign flip. Agent's TOOL_CALL was `(2*24)-64` (= -16.0), which is the arithmetic of the immediately prior problem (gsm8k_0013, Jaime eggs, `64-(24*2)=16`) applied to this problem's setup, and the reported ANSWER was 16 rather than the tool's -16. The event is distinct in mechanism from the two clean tool-defiance events (gsm8k_0009 seed 42 diversity, gsm8k_0017 seed 13 gating), which are recorded in Section 4.10.13.
+
+========================================================================================
+gsm8k_0005 | seed 13 pool | gold (parsed): 2.0 | receipted 30 July 2026 (thesis timeline)
+Context: sensitivity sweep, baseline fs=1.0/sjw=0.5/ua=0.0, round 5. Tool returned 2.0
+(correct); agent answered 22.0 (the weekly-spending intermediate). Tool defiance via
+intermediate-value substitution. First seed-13 receipt in the index.
+-- QUESTION --
+Janet takes two bus trips five days a week. If each bus trip costs her $2.20, how much
+would she save by buying a weekly bus pass for $20?
+-- REFERENCE SOLUTION (hand-verified: 2*5=10 trips; 10*2.20=22; 22-20=2) --
+First find the total number of trips Janet takes during the week: 2 trips/day * 5 days/week = <<2*5=10>>10 trips/week
+Then multiply this number by the cost per trip to find her current weekly spending: 10 trips/week * $2.20/trip = $<<10*2.20=22>>22/week
+Then subtract the cost of the weekly bus pass from this number to find her savings: $22/week - $20/week = $<<22-20=2>>2
+#### 2
