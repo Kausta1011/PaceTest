@@ -86,3 +86,35 @@ First find the total number of trips Janet takes during the week: 2 trips/day * 
 Then multiply this number by the cost per trip to find her current weekly spending: 10 trips/week * $2.20/trip = $<<10*2.20=22>>22/week
 Then subtract the cost of the weekly bus pass from this number to find her savings: $22/week - $20/week = $<<22-20=2>>2
 #### 2
+========================================================================================
+gsm8k_0000 | gold (parsed): 5.0 | seed 77 pool
+-- QUESTION --
+Cody and Trevor had 12 sandwiches. Cody ate a third of the sandwiches, and Trevor ate a quarter of the sandwiches. How many sandwiches are left?
+-- REFERENCE SOLUTION --
+Cody ate 12/3=<<12/3=4>>4 sandwiches.
+Trevor ate 12/4=<<12/4=3>>3 sandwiches.
+Cody and Trevor ate 4+3=<<4+3=7>>7 sandwiches.
+There are 12-7=<<12-7=5>>5 sandwiches left
+#### 5
+========================================================================================
+gsm8k_0003 | gold (parsed): 63.0 | seed 13 pool
+-- QUESTION --
+Martha is knitting winter wear for her 3 grandchildren. They're triplets, so they're all the same size. She wants to make a hat, scarf, sweater, mittens, and socks for each of them. It takes 2 skeins of wool to make a hat, 4 for a scarf, 12 for a sweater, 1 for a pair of mittens, and 2 for a pair of socks. How many skeins of wool will she need to buy?
+-- REFERENCE SOLUTION --
+A full outfit for each child will require 2 skeins per hat + 4 skeins per scarf + 12 skeins per sweater + 1 skein per pair of mittens + 2 skeins per pair of socks = <<2+4+12+1+2=21>>21 skeins of wool.
+So to knit outfits for all of her grandchildren, she will need 3 * 21 = <<3*21=63>>63 skeins of wool.
+#### 63
+
+========================================================================================
+gsm8k_0008 | gold (parsed): 32.0 | seed 13 pool
+-- QUESTION --
+Anakin and Locsin went to the beach today. Anakin caught 10 starfish, 6 sea horses, and 3 clownfish. While Locsin caught 5 fewer starfish than Anakin, 3 fewer sea horses than Anakin, and 2 more clownfish than Anakin. How many fish were they able to catch?
+-- REFERENCE SOLUTION --
+Locsin caught 10 - 5 = <<10-5=5>>5 starfishes.
+They caught 10 + 5 = <<10+5=15>>15 starfishes.
+Locsin caught 6 - 3 = <<6-3=3>>3 seahorses
+They caught 6 + 3 = <<6+3=9>>9 seahorses
+Locsin caught 3 + 2 = <<3+2=5>>5 clownfish.
+So, they caught 3 + 5 = <<3+5=8>>8 clownfish.
+Therefore, Anakin and Locsin were able to catch a total of 15 + 9 + 8 = <<15+9+8=32>>32 fish.
+#### 32

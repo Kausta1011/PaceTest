@@ -13,7 +13,9 @@ import platform
 import subprocess
 from pathlib import Path
 
-from pacetest.llm import MODEL, DEFAULT_SEED
+from pacetest.llm import (
+    MODEL, DEFAULT_SEED, active_backend, active_model, is_deterministic_backend,
+)
 
 
 def _git_commit() -> str:
@@ -73,8 +75,14 @@ def init_log(
         "type": "header",
         "timestamp": time.time(),
         "run_name": run_name,
-        "model": MODEL,
-        "seed": DEFAULT_SEED,
+        # `model` reports the model actually called, which differs from the
+        # local default when the hosted backend is active (Week 11).
+        "model": active_model(),
+        "backend": active_backend(),
+        # False on hosted APIs, which accept no seed. A reader of the log can
+        # therefore tell whether Section 3.5's determinism claim applies.
+        "seed": DEFAULT_SEED if is_deterministic_backend() else None,
+        "seed_honoured": is_deterministic_backend(),
         "git_commit": _git_commit(),
         "ollama_version": _ollama_version(),
         "python_version": platform.python_version(),

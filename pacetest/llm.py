@@ -1,9 +1,47 @@
-"""LLM helper function that calls a local Ollama server"""
+"""LLM helper function that calls a local Ollama server.
+
+Week 11 addition: an optional hosted-API backend for the proposal's
+cross-model validation sweep. The backend is selected by the environment
+variable PACETEST_BACKEND and defaults to "ollama", so every run,
+script, and test written before Week 11 behaves exactly as before unless
+the variable is set explicitly.
+
+    PACETEST_BACKEND=ollama     (default) local qwen3:8b, seeded, deterministic
+    PACETEST_BACKEND=anthropic  hosted Messages API, NOT seed-deterministic
+"""
+import os
+
 import requests
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL = "qwen3:8b"
 DEFAULT_SEED = 42
+
+
+def active_backend() -> str:
+    """Return the backend name currently selected by the environment."""
+    return os.environ.get("PACETEST_BACKEND", "ollama").strip().lower()
+
+
+def active_model() -> str:
+    """Return the model identifier the active backend will actually call.
+
+    The logger writes this into every log header, so a log always states
+    which model produced it rather than assuming the local default.
+    """
+    if active_backend() == "anthropic":
+        from pacetest.llm_api import DEFAULT_API_MODEL
+        return os.environ.get("PACETEST_API_MODEL", DEFAULT_API_MODEL)
+    return MODEL
+
+
+def is_deterministic_backend() -> bool:
+    """True when the active backend honours a fixed seed.
+
+    False for hosted APIs, which accept no seed parameter. Section 3.5's
+    reproducibility argument applies only when this is True.
+    """
+    return active_backend() == "ollama"
 # Bumped from 500 to 1500 on Week 6 Day 5 to accommodate GSM8K responses.
 # qwen3:8b emits a <think>...</think> reasoning block before its visible
 # output, and on word problems that block can be 300 to 800 tokens.
@@ -31,6 +69,19 @@ def llm(prompt: str, temperature: float = 0.3, seed: int = DEFAULT_SEED, max_tok
         RuntimeError : If Ollama is not reachable or returns an error
 
     """
+
+    # Backend dispatch. Kept inside llm() so that every existing caller
+    # (forward_pass, rewriter) picks the hosted backend up automatically
+    # when the environment variable is set, with no import changes.
+    if active_backend() == "anthropic":
+        from pacetest.llm_api import llm_anthropic
+        return llm_anthropic(
+            prompt,
+            temperature=0.0,          # closest available to deterministic
+            seed=None,                # no seed parameter on the Messages API
+            max_tokens=max_tokens,
+            model=None,               # resolved from PACETEST_API_MODEL
+        )
 
     payload = {
         "model" : model ,
