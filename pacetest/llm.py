@@ -8,6 +8,12 @@ the variable is set explicitly.
 
     PACETEST_BACKEND=ollama     (default) local qwen3:8b, seeded, deterministic
     PACETEST_BACKEND=anthropic  hosted Messages API, NOT seed-deterministic
+    PACETEST_BACKEND=openai     hosted chat-completions, best-effort seed only
+
+PACETEST_TEMPERATURE, if set, overrides the temperature for every call on
+every backend. It exists so that temperature can be swept as an
+experimental variable without editing call sites. Unset by default, in
+which case each backend keeps its own default (0.3 local, 0.0 hosted).
 """
 import os
 
@@ -29,10 +35,35 @@ def active_model() -> str:
     The logger writes this into every log header, so a log always states
     which model produced it rather than assuming the local default.
     """
-    if active_backend() == "anthropic":
+    b = active_backend()
+    if b == "anthropic":
         from pacetest.llm_api import DEFAULT_API_MODEL
         return os.environ.get("PACETEST_API_MODEL", DEFAULT_API_MODEL)
+    if b == "openai":
+        from pacetest.llm_api import DEFAULT_OPENAI_MODEL
+        return os.environ.get("PACETEST_API_MODEL", DEFAULT_OPENAI_MODEL)
     return MODEL
+
+
+def active_temperature(default: float) -> float:
+    """Return the temperature to use, honouring PACETEST_TEMPERATURE if set.
+
+    Args:
+        default: the temperature the caller would otherwise have used.
+
+    Returns:
+        The override if the environment variable is set and parses as a
+        float, otherwise the caller's default.
+    """
+    raw = os.environ.get("PACETEST_TEMPERATURE", "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        raise RuntimeError(
+            f"PACETEST_TEMPERATURE={raw!r} is not a number."
+        )
 
 
 def is_deterministic_backend() -> bool:
@@ -73,16 +104,27 @@ def llm(prompt: str, temperature: float = 0.3, seed: int = DEFAULT_SEED, max_tok
     # Backend dispatch. Kept inside llm() so that every existing caller
     # (forward_pass, rewriter) picks the hosted backend up automatically
     # when the environment variable is set, with no import changes.
-    if active_backend() == "anthropic":
+    backend = active_backend()
+    if backend == "anthropic":
         from pacetest.llm_api import llm_anthropic
         return llm_anthropic(
             prompt,
-            temperature=0.0,          # closest available to deterministic
+            temperature=active_temperature(0.0),
             seed=None,                # no seed parameter on the Messages API
             max_tokens=max_tokens,
             model=None,               # resolved from PACETEST_API_MODEL
         )
+    if backend == "openai":
+        from pacetest.llm_api import llm_openai
+        return llm_openai(
+            prompt,
+            temperature=active_temperature(0.0),
+            seed=seed,                # best-effort seed, passed through
+            max_tokens=max_tokens,
+            model=None,
+        )
 
+    temperature = active_temperature(temperature)
     payload = {
         "model" : model ,
         "prompt" : prompt,

@@ -87,18 +87,28 @@ def main():
     p.add_argument("--rounds", type=int, default=20)
     p.add_argument("--n", type=int, default=20)
     p.add_argument("--held-out-n", type=int, default=3, dest="held_out_n")
+    p.add_argument("--backend", choices=["anthropic", "openai"],
+                   default="anthropic",
+                   help="Hosted provider. Defaults to anthropic so every "
+                        "command issued before Week 11 behaves identically.")
+    p.add_argument("--model", default=None,
+                   help="Override the backend's default model identifier.")
     p.add_argument("--dry-run", action="store_true",
                    help="Print the plan and cost estimate, make no API calls.")
     args = p.parse_args()
 
     # Force the hosted backend for this script only, before any pacetest
     # module reads it. Everything downstream picks this up automatically.
-    os.environ["PACETEST_BACKEND"] = "anthropic"
-    from pacetest.llm_api import (DEFAULT_API_MODEL, PRICE_PER_MTOK,
-                                  usage_report)
+    os.environ["PACETEST_BACKEND"] = args.backend
+    if args.model:
+        os.environ["PACETEST_API_MODEL"] = args.model
+    from pacetest.llm import active_model
+    from pacetest.llm_api import PRICE_PER_MTOK, usage_report
 
-    model = os.environ.get("PACETEST_API_MODEL", DEFAULT_API_MODEL)
-    model_tag = model.split("-2")[0].replace(".", "")
+    # The model tag lands in every filename, so an OpenAI run can never
+    # overwrite the Anthropic run of the same cell, seed, ua and K.
+    model = active_model()
+    model_tag = model.split("-2")[0].replace(".", "").strip("-")
     pacemaker_arg = None if args.pacemaker == "baseline" else args.pacemaker
 
     calls = _estimate_calls(args.pacemaker, args.rounds, args.held_out_n)
@@ -135,8 +145,9 @@ def main():
         print("\nDry run only. No API calls made, nothing spent.")
         return
 
-    if not os.environ.get("ANTHROPIC_API_KEY", "").strip():
-        print("ANTHROPIC_API_KEY is not set. Export it and re-run.")
+    key_var = "OPENAI_API_KEY" if args.backend == "openai" else "ANTHROPIC_API_KEY"
+    if not os.environ.get(key_var, "").strip():
+        print(f"{key_var} is not set. Export it and re-run.")
         return
 
     tasks = generate_tasks(seed=args.seed, n=args.n, difficulty="gsm8k")
